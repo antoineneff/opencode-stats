@@ -6,19 +6,21 @@
 
 ## 技术选型
 
-| 组件     | 技术选择              | 说明                        |
-| -------- | --------------------- | --------------------------- |
-| TUI 框架 | `ratatui`             | 使用 inline viewport 模式   |
-| 终端后端 | `crossterm`           | 跨平台终端控制              |
-| 数据库   | `rusqlite`            | 读取 opencode SQLite 数据库 |
-| 时间处理 | `chrono`              | 日期时间计算                |
-| 数据处理 | `serde`, `serde_json` | JSON 序列化                 |
-| 错误处理 | `anyhow`, `thiserror` | 错误管理                    |
+| 组件        | 技术选择              | 说明                        |
+| ----------- | --------------------- | --------------------------- |
+| TUI 框架    | `ratatui`             | 使用 inline viewport 模式   |
+| 终端后端    | `crossterm`           | 跨平台终端控制              |
+| 数据库      | `rusqlite`            | 读取 opencode SQLite 数据库 |
+| 时间处理    | `chrono`              | 日期时间计算                |
+| 数据处理    | `serde`, `serde_json` | JSON 序列化                 |
+| HTTP 客户端 | `reqwest`             | 获取 models.dev 定价数据    |
+| 异步运行时  | `tokio`               | 支持异步 HTTP 请求          |
+| 错误处理    | `anyhow`, `thiserror` | 错误管理                    |
 
 ## 项目结构
 
 ```text
-oc-status/
+oc-stats/
 ├── Cargo.toml
 ├── src/
 │   ├── main.rs              # 入口和 CLI 命令
@@ -34,6 +36,10 @@ oc-status/
 │   │   ├── monthly.rs       # 每月统计
 │   │   ├── model_stats.rs   # 模型统计
 │   │   └── heatmap_data.rs  # 热力图数据准备
+│   ├── cache/
+│   │   ├── mod.rs           # 缓存模块
+│   │   ├── models_cache.rs  # 模型定价缓存管理
+│   │   └── http_client.rs   # HTTP 客户端封装
 │   ├── ui/
 │   │   ├── mod.rs           # UI 模块
 │   │   ├── app.rs           # 应用状态管理
@@ -94,9 +100,7 @@ oc-status/
 
 #### Overview 页面
 
-```
 ![overview](plan.assets/image.png)
-```
 
 **组件说明**:
 
@@ -108,9 +112,7 @@ oc-status/
 
 #### Models 页面
 
-```
 ![models](plan.assets/image-1.png)
-```
 
 **组件说明**:
 
@@ -123,12 +125,14 @@ oc-status/
 
 参考 Python 项目：`ocmonitor/ui/theme.py`
 
+**颜色主题**: 青蓝色系（cyan/blue）替代 Claude Code 的橙色
+
 **配置项**:
 
-- 热力图颜色 (4 级强度)
-- 折线图颜色 (多模型)
-- 文本颜色 (主/次)
-- 强调色 (Tab 激活状态)
+- 热力图颜色 (4 级强度): `dim white` → `cyan` → `blue` → `bright_cyan`
+- 折线图颜色 (多模型): `cyan`, `blue`, `bright_blue` 等区分
+- 文本颜色 (主/次): `white`, `dim white`
+- 强调色 (Tab 激活状态): `cyan` 背景色
 - 暗色/亮色主题切换
 
 ## UI 设计要点
@@ -150,12 +154,13 @@ oc-status/
 ### 热力图设计
 
 **字符等级** (4 级):
-| 等级 | 字符 | 说明 |
-|------|------|------|
-| 0 | `·` | 无活动/最低 |
-| 1 | `░` | 低 |
-| 2 | `▒` | 中 |
-| 3 | `█` | 高 |
+
+| 等级 | 字符 | 说明        |
+| ---- | ---- | ----------- |
+| 0    | `·`  | 无活动/最低 |
+| 1    | `░`  | 低          |
+| 2    | `▒`  | 中          |
+| 3    | `█`  | 高          |
 
 **布局**:
 
@@ -172,6 +177,11 @@ oc-status/
 - 自动 Y 轴刻度 (根据数据范围)
 - X 轴日期标签 (根据时间范围调整密度)
 
+**时间范围行为**:
+
+- 受时间范围切换影响 (All time / 30 days / 7 days)
+- 无数据时仅显示坐标轴，不绘制数据线
+
 ## 交互功能
 
 | 按键               | 功能                                       |
@@ -181,6 +191,13 @@ oc-status/
 | `1` / `2` / `3`    | 快速选择时间范围                           |
 | `Ctrl+S`           | 复制当前数据到剪贴板                       |
 | `Esc` 或 `q`       | 退出程序                                   |
+
+**时间范围行为说明**:
+
+- **热力图**: 始终显示过去 365 天，**不受**时间范围切换影响
+- **折线图**: 时间范围切换**会影响**显示范围
+- **统计信息**: 时间范围切换**会影响**数值
+- **无数据处理**: 折线图在无数据时仅显示坐标轴
 
 ## 开发阶段
 
@@ -200,6 +217,10 @@ oc-status/
 - [ ] 实现成本计算（基于 models.json）
 - [ ] 添加时间范围过滤
 - [ ] 支持 JSON 数据源读取
+- [ ] 实现 `reqwest` HTTP 客户端
+- [ ] 实现缓存管理（1 小时过期、异步更新）
+- [ ] 处理 models.dev 数据格式转换
+- [ ] Cache 价格 fallback 逻辑
 
 ### 阶段 3: UI 实现
 
@@ -221,21 +242,37 @@ oc-status/
 
 ```toml
 [package]
-name = "oc-status"
-version = "0.1.0"
-edition = "2021"
+name = "oc-stats"
+edition = "2024"
 
 [dependencies]
-ratatui = "0.29"
-crossterm = "0.28"
-rusqlite = { version = "0.32", features = ["bundled"] }
+# TUI 框架
+ratatui = "0.30"
+crossterm = "0.29"
+
+# 数据库
+rusqlite = { version = "0.38", features = ["bundled"] }
+
+# 时间处理
 chrono = "0.4"
+
+# 序列化
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rust_decimal = "1.35"
+
+# 精确小数计算
+rust_decimal = "1.40"
+
+# HTTP 客户端 (models.dev API)
+reqwest = { version = "0.13", features = ["json"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "time"] }
+
+# 错误处理
 anyhow = "1.0"
 thiserror = "2.0"
-dirs = "5.0"
+
+# 系统目录
+dirs = "6.0"
 ```
 
 ## 参考资料
@@ -252,10 +289,10 @@ dirs = "5.0"
 
 ### Ratatui 参考
 
-- Inline Viewport: https://ratatui.rs/examples/apps/inline/
-- Sparkline: https://ratatui.rs/examples/widgets/sparkline/
-- Chart: https://ratatui.rs/examples/widgets/chart/
-- Calendar: https://ratatui.rs/examples/widgets/calendar/
+- Inline Viewport: <https://ratatui.rs/examples/apps/inline/>
+- Sparkline: <https://ratatui.rs/examples/widgets/sparkline/>
+- Chart: <https://ratatui.rs/examples/widgets/chart/>
+- Calendar: <https://ratatui.rs/examples/widgets/calendar/>
 
 ## 已确认事项
 
@@ -269,11 +306,27 @@ dirs = "5.0"
    - SQLite 数据库（主要）
    - JSON 导出文件（测试/迁移）
 
-3. **时间范围**: 固定近一年
-   - 热力图默认显示过去 365 天
-   - 支持时间范围过滤（All time / 30 days / 7 days）
+3. **时间范围行为**:
+   - **热力图**: 始终显示过去 365 天，**不受**时间范围切换影响
+   - **折线图**: 时间范围切换**会影响**显示范围 (All time / 30 days / 7 days)
+   - **统计信息**: 时间范围切换**会影响**数值
+   - **无数据处理**: 折线图在无数据时仅显示坐标轴
 
 4. **成本计算**: 完整实现
    - 从 `models.json` 读取定价数据
    - 计算输入/输出/缓存 token 成本
    - 显示累计总成本
+
+5. **models.dev 数据源策略**:
+   - 启动时加载本地缓存：`~/.config/oc-stats/models.json`
+   - 缓存时效：1 小时
+   - 过期后异步从 `https://models.dev/api.json` 获取更新
+   - 网络失败时继续使用旧缓存
+   - Cache 价格 fallback：`cacheWrite = input`, `cacheRead = input × 0.1`
+
+6. **颜色主题**: 青蓝色系 (cyan/blue) 替代 Claude Code 的橙色
+   - 热力图 4 级强度：`dim white` → `cyan` → `blue` → `bright_cyan`
+   - 折线图多模型：`cyan`, `blue`, `bright_blue` 等区分
+   - Tab 激活状态：`cyan` 背景色
+
+7. **货币单位**: USD（美元），无需支持多货币
