@@ -78,8 +78,16 @@ impl App {
         });
 
         let app_result = self.run_loop(&mut terminal);
-        ratatui::restore();
+        Self::restore(&mut terminal);
         app_result
+    }
+
+    /// 默认的 ratatui::restore 在 Inline Viewport 下有错误的行为，
+    /// 此处重置终端以确保光标和输入状态正确恢复
+    fn restore(terminal: &mut DefaultTerminal) {
+        terminal.clear().unwrap();
+        crossterm::terminal::disable_raw_mode().unwrap();
+        print_exit_art();
     }
 
     fn run_loop(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -149,12 +157,12 @@ impl App {
             ratatui::text::Span::raw(" "),
             segment_span("Models", self.page == Page::Models, theme),
             ratatui::text::Span::raw("     "),
-            segment_span("All", self.range == TimeRange::All, theme),
+            segment_span(" All ", self.range == TimeRange::All, theme),
             ratatui::text::Span::raw(" "),
             segment_span("7 Days", self.range == TimeRange::Last7Days, theme),
             ratatui::text::Span::raw(" "),
             segment_span("30 Days", self.range == TimeRange::Last30Days, theme),
-            ratatui::text::Span::raw("    "),
+            ratatui::text::Span::raw("     "),
             ratatui::text::Span::styled(
                 format!("Source: {:?}", self.data.source),
                 theme.muted_style(),
@@ -246,4 +254,16 @@ impl App {
             Err(err) => self.status_message = Some(format!("Clipboard unavailable: {err}")),
         }
     }
+}
+
+fn print_exit_art() {
+    const ART: &str = r#"
+  ███████╗████████╗ █████╗ ████████╗███████╗
+  ██╔════╝╚══██╔══╝██╔══██╗╚══██╔══╝██╔════╝
+  ███████╗   ██║   ███████║   ██║   ███████╗
+  ╚════██║   ██║   ██╔══██║   ██║   ╚════██║
+  ███████║   ██║   ██║  ██║   ██║   ███████║
+  ╚══════╝   ╚═╝   ╚═╝  ╚═╝   ╚═╝   ╚══════╝
+"#;
+    eprintln!("{ART}");
 }
