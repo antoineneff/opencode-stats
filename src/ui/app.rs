@@ -143,7 +143,11 @@ impl App {
             Constraint::Min(16),
             Constraint::Length(1),
         ]);
-        let [divider, header, spacer, body, footer] = vertical.areas(area);
+
+        let [divider, header, spacer, body, footer] =
+            vertical.areas(area).map(|area| left_aligned_content(area));
+        let [header, body, footer] = [header, body, footer]
+            .map(|area| Block::new().padding(Padding::horizontal(1)).inner(area));
 
         frame.render_widget(
             ratatui::widgets::Paragraph::new("─".repeat(CONTENT_WIDTH as _))
@@ -151,15 +155,8 @@ impl App {
             divider,
         );
 
-        let header = Block::new()
-            .padding(Padding::horizontal(1))
-            .inner(left_aligned_content(header));
         self.render_header(frame, header, &theme);
         frame.render_widget(ratatui::widgets::Paragraph::new(""), spacer);
-
-        let body = Block::new()
-            .padding(Padding::horizontal(1))
-            .inner(left_aligned_content(body));
 
         match self.page {
             Page::Overview => render_overview(frame, body, &self.snapshot, self.range, &theme),
@@ -181,9 +178,6 @@ impl App {
             ),
         }
 
-        let footer = Block::new()
-            .padding(Padding::horizontal(1))
-            .inner(left_aligned_content(footer));
         self.render_footer(frame, footer, &theme);
     }
 
