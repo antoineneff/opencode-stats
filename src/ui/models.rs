@@ -3,10 +3,10 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::analytics::model_stats::{chart_with_focus, ModelUsageRow, ProviderUsageRow};
 use crate::analytics::AnalyticsSnapshot;
+use crate::analytics::model_stats::{ModelUsageRow, ProviderUsageRow, chart_with_focus};
 use crate::ui::theme::Theme;
-use crate::ui::widgets::common::{left_aligned_content, metric_line, truncate_label};
+use crate::ui::widgets::common::{metric_line, truncate_label};
 use crate::ui::widgets::linechart::build_chart;
 use crate::utils::formatting::{format_price_summary, format_tokens};
 use crate::utils::time::TimeRange;
@@ -19,7 +19,6 @@ pub fn render_models(
     focused_model_index: usize,
     theme: &Theme,
 ) {
-    let content = left_aligned_content(area);
     let [chart_area, _, header_area, _, detail_area, _] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -30,7 +29,7 @@ pub fn render_models(
             Constraint::Length(2),
             Constraint::Length(1),
         ])
-        .areas(content);
+        .areas(area);
 
     let focused_row = snapshot.models.get(focused_model_index);
     let chart_data = chart_with_focus(
@@ -160,7 +159,6 @@ pub fn render_providers(
     focused_provider_index: usize,
     theme: &Theme,
 ) {
-    let content = left_aligned_content(area);
     let [chart_area, _, header_area, _, detail_area, _] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -171,7 +169,7 @@ pub fn render_providers(
             Constraint::Length(2),
             Constraint::Length(1),
         ])
-        .areas(content);
+        .areas(area);
 
     let focused_row = snapshot.providers.get(focused_provider_index);
     let chart_data = chart_with_focus(

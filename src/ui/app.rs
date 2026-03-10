@@ -2,6 +2,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::{Constraint, Layout};
+use ratatui::widgets::{Block, Padding};
 use ratatui::{DefaultTerminal, Frame, TerminalOptions, Viewport};
 use tokio::sync::mpsc;
 
@@ -134,12 +136,12 @@ impl App {
     fn render(&self, frame: &mut Frame<'_>) {
         let theme = Theme::from_mode(self.theme_mode);
         let area = frame.area();
-        let vertical = ratatui::layout::Layout::vertical([
-            ratatui::layout::Constraint::Length(1),
-            ratatui::layout::Constraint::Length(1),
-            ratatui::layout::Constraint::Length(1),
-            ratatui::layout::Constraint::Min(16),
-            ratatui::layout::Constraint::Length(1),
+        let vertical = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(16),
+            Constraint::Length(1),
         ]);
         let [divider, header, spacer, body, footer] = vertical.areas(area);
 
@@ -149,8 +151,15 @@ impl App {
             divider,
         );
 
+        let header = Block::new()
+            .padding(Padding::horizontal(1))
+            .inner(left_aligned_content(header));
         self.render_header(frame, header, &theme);
         frame.render_widget(ratatui::widgets::Paragraph::new(""), spacer);
+
+        let body = Block::new()
+            .padding(Padding::horizontal(1))
+            .inner(left_aligned_content(body));
 
         match self.page {
             Page::Overview => render_overview(frame, body, &self.snapshot, self.range, &theme),
@@ -172,24 +181,23 @@ impl App {
             ),
         }
 
+        let footer = Block::new()
+            .padding(Padding::horizontal(1))
+            .inner(left_aligned_content(footer));
         self.render_footer(frame, footer, &theme);
     }
 
     fn render_header(&self, frame: &mut Frame<'_>, area: ratatui::layout::Rect, theme: &Theme) {
-        let content = left_aligned_content(area);
+        let content = area;
         let line = ratatui::text::Line::from(vec![
             segment_span("Overview", self.page == Page::Overview, theme),
-            // ratatui::text::Span::raw(" "),
             segment_span("Models", self.page == Page::Models, theme),
-            // ratatui::text::Span::raw(" "),
             segment_span("Providers", self.page == Page::Providers, theme),
-            ratatui::text::Span::raw("     "),
+            ratatui::text::Span::raw("    "),
             segment_span(" All ", self.range == TimeRange::All, theme),
-            // ratatui::text::Span::raw(" "),
             segment_span("7 Days", self.range == TimeRange::Last7Days, theme),
-            // ratatui::text::Span::raw(" "),
             segment_span("30 Days", self.range == TimeRange::Last30Days, theme),
-            ratatui::text::Span::raw("     "),
+            ratatui::text::Span::raw("    "),
             ratatui::text::Span::styled(format!("{:?}", self.data.source), theme.muted_style()),
         ]);
 
@@ -204,7 +212,7 @@ impl App {
             .unwrap_or("<tab> ←/→ h/l pages | r cycle | 1/2/3 pick | <ctrl-s> copy | q exit");
         frame.render_widget(
             ratatui::widgets::Paragraph::new(status).style(theme.muted_style()),
-            left_aligned_content(area),
+            area,
         );
     }
 

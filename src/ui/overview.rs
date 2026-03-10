@@ -4,7 +4,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::analytics::AnalyticsSnapshot;
 use crate::ui::theme::Theme;
-use crate::ui::widgets::common::{left_aligned_content, metric_line};
+use crate::ui::widgets::common::metric_line;
 use crate::ui::widgets::heatmap::HeatmapWidget;
 use crate::utils::formatting::{format_price_summary, format_tokens};
 
@@ -15,7 +15,6 @@ pub fn render_overview(
     _range: crate::utils::time::TimeRange,
     theme: &Theme,
 ) {
-    let content = left_aligned_content(area);
     let [heatmap, legend, spacer, favorite, stats, fun] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -26,7 +25,7 @@ pub fn render_overview(
             Constraint::Length(5),
             Constraint::Length(2),
         ])
-        .areas(content);
+        .areas(area);
 
     frame.render_widget(
         HeatmapWidget {
