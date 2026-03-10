@@ -145,7 +145,7 @@ impl App {
         ]);
 
         let [divider, header, spacer, body, footer] =
-            vertical.areas(area).map(|area| left_aligned_content(area));
+            vertical.areas(area).map(left_aligned_content);
         let [header, body, footer] = [header, body, footer]
             .map(|area| Block::new().padding(Padding::horizontal(1)).inner(area));
 
@@ -330,17 +330,25 @@ impl App {
 
 fn print_exit_art() {
     type NumStr = [&'static str; 4];
-    const O: NumStr = ["     ", "█▀▀█ ", "█  █ ", "▀▀▀▀ "];
-    const C: NumStr = ["     ", "█▀▀▀ ", "█    ", "▀▀▀▀ "];
+    const O: NumStr = ["    ", "█▀▀█", "█  █", "▀▀▀▀"];
+    const C: NumStr = ["    ", "█▀▀▀", "█   ", "▀▀▀▀"];
     const S: NumStr = ["     ", "▄▀▀▀ ", "▀▀▀█ ", "▀▀▀  "];
     const T: NumStr = [" ▄   ", "▀█▀▀ ", " █   ", "  ▀▀ "];
     const A: NumStr = ["     ", "█▀▀█ ", "█  █ ", "▀▀▀ ▀"];
-    const SPACE: NumStr = ["  ", "  ", "  ", "  "];
-    for (o, c, space, s, t, a) in itertools::izip!(O, C, SPACE, S, T, A) {
+
+    fn set_theme(str: &str, idx: usize) -> colored::ColoredString {
+        let mut str = str.bright_black();
+        if idx == 2 {
+            str = str.on_black();
+        }
+        str
+    }
+
+    for (idx, (o, c, s, t, a)) in itertools::izip!(O, C, S, T, A).enumerate() {
         eprintln!(
-            "{space}{o}{c}{space}{s}{t}{a}{t}{s}",
-            o = o.bright_black(),
-            c = c.bright_black(),
+            "  {o} {c}   {s}{t}{a}{t}{s}",
+            o = set_theme(o, idx),
+            c = set_theme(c, idx),
         );
     }
 }
