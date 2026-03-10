@@ -201,7 +201,7 @@ impl App {
             .status_message
             .as_ref()
             .map(|status| status.text.as_str())
-            .unwrap_or("tab/←/→/h/l pages | r cycle | 1/2/3 pick | <ctrl-s> copy | q exit");
+            .unwrap_or("<tab> ←/→ h/l pages | r cycle | 1/2/3 pick | <ctrl-s> copy | q exit");
         frame.render_widget(
             ratatui::widgets::Paragraph::new(status).style(theme.muted_style()),
             left_aligned_content(area),

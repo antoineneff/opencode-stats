@@ -70,7 +70,7 @@ pub fn in_range(date: NaiveDate, range: TimeRange, today: NaiveDate) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{custom_week_start, TimeRange};
+    use super::{TimeRange, custom_week_start};
     use chrono::NaiveDate;
 
     #[test]
