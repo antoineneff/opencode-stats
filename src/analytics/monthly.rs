@@ -1,15 +1,14 @@
-use chrono::NaiveDate;
-use rust_decimal::Decimal;
-
 use crate::analytics::weekly::WeeklyUsage;
 use crate::db::models::TokenUsage;
+use crate::utils::pricing::PriceSummary;
 use crate::utils::time::month_start;
+use chrono::NaiveDate;
 
 #[derive(Clone, Debug)]
 pub struct MonthlyUsage {
     pub tokens: TokenUsage,
     pub interactions: usize,
-    pub cost: Decimal,
+    pub cost: PriceSummary,
 }
 
 pub fn aggregate_monthly(weekly: &[WeeklyUsage]) -> Vec<MonthlyUsage> {
@@ -19,11 +18,11 @@ pub fn aggregate_monthly(weekly: &[WeeklyUsage]) -> Vec<MonthlyUsage> {
         let entry = grouped.entry(bucket).or_insert_with(|| MonthlyUsage {
             tokens: TokenUsage::default(),
             interactions: 0,
-            cost: Decimal::ZERO,
+            cost: PriceSummary::default(),
         });
         entry.tokens.add_assign(&week.tokens);
         entry.interactions += week.interactions;
-        entry.cost += week.cost;
+        entry.cost.merge(&week.cost);
     }
 
     grouped.into_values().collect()

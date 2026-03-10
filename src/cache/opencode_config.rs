@@ -9,6 +9,11 @@ use serde_json::Value;
 use crate::cache::models_cache::{map_models_root_to_local, ModelPricing};
 
 pub fn load_pricing_overrides() -> Result<BTreeMap<String, ModelPricing>> {
+    let merged = load_merged_config()?;
+    Ok(extract_pricing_overrides(&merged))
+}
+
+fn load_merged_config() -> Result<Value> {
     let mut merged = Value::Object(serde_json::Map::new());
     for path in candidate_config_paths()? {
         let Some(config) = read_config_if_exists(&path)? else {
@@ -16,8 +21,7 @@ pub fn load_pricing_overrides() -> Result<BTreeMap<String, ModelPricing>> {
         };
         merge_json(&mut merged, config);
     }
-
-    Ok(extract_pricing_overrides(&merged))
+    Ok(merged)
 }
 
 fn candidate_config_paths() -> Result<Vec<PathBuf>> {

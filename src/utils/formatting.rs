@@ -1,5 +1,7 @@
 use rust_decimal::Decimal;
 
+use crate::utils::pricing::PriceSummary;
+
 pub fn format_tokens(value: u64) -> String {
     match value {
         0..=999 => value.to_string(),
@@ -14,6 +16,23 @@ pub fn format_usd_precise(value: Decimal) -> String {
         format!("${:.2}", value.round_dp(2))
     } else {
         format!("${:.4}", value.round_dp(4))
+    }
+}
+
+pub fn format_price_summary(value: &PriceSummary) -> String {
+    if !value.has_known {
+        return if value.missing {
+            "--".to_string()
+        } else {
+            format_usd_precise(Decimal::ZERO)
+        };
+    }
+
+    let amount = format_usd_precise(value.known);
+    if value.missing {
+        format!("{amount} + ?")
+    } else {
+        amount
     }
 }
 

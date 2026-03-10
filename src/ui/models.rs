@@ -3,12 +3,12 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::analytics::model_stats::{chart_with_focus, ModelUsageRow};
+use crate::analytics::model_stats::{chart_with_focus, ModelUsageRow, ProviderUsageRow};
 use crate::analytics::AnalyticsSnapshot;
 use crate::ui::theme::Theme;
 use crate::ui::widgets::common::{left_aligned_content, metric_line, truncate_label};
 use crate::ui::widgets::linechart::build_chart;
-use crate::utils::formatting::{format_tokens, format_usd_precise};
+use crate::utils::formatting::{format_price_summary, format_tokens};
 use crate::utils::time::TimeRange;
 
 pub fn render_models(
@@ -123,7 +123,148 @@ fn render_model_detail(
         top_left,
     );
     frame.render_widget(
-        Paragraph::new(metric_line("Cost ", format_usd_precise(row.cost), theme)),
+        Paragraph::new(metric_line("Cost ", format_price_summary(&row.cost), theme)),
+        top_mid,
+    );
+    frame.render_widget(
+        Paragraph::new(metric_line("Sessions ", row.sessions.to_string(), theme)),
+        top_right,
+    );
+    frame.render_widget(
+        Paragraph::new(metric_line(
+            "Interactions ",
+            row.interactions.to_string(),
+            theme,
+        )),
+        bottom_left,
+    );
+    frame.render_widget(
+        Paragraph::new(metric_line("Days ", row.active_days.to_string(), theme)),
+        bottom_mid,
+    );
+    frame.render_widget(
+        Paragraph::new(metric_line(
+            "Rate ",
+            format!("{:.1} tok/s", row.p50_output_tokens_per_second),
+            theme,
+        )),
+        bottom_right,
+    );
+}
+
+pub fn render_providers(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    snapshot: &AnalyticsSnapshot,
+    _range: TimeRange,
+    focused_provider_index: usize,
+    theme: &Theme,
+) {
+    let content = left_aligned_content(area);
+    let [chart_area, _, header_area, _, detail_area, _] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(2),
+            Constraint::Length(1),
+        ])
+        .areas(content);
+
+    let focused_row = snapshot.providers.get(focused_provider_index);
+    let chart_data = chart_with_focus(
+        &snapshot.provider_chart,
+        focused_row.map(|row| row.provider_id.as_str()),
+    );
+    frame.render_widget(build_chart(&chart_data, theme), chart_area);
+
+    if let Some(row) = focused_row {
+        frame.render_widget(
+            Paragraph::new(focus_provider_line(
+                row,
+                focused_provider_index,
+                &snapshot.providers,
+                theme,
+            )),
+            header_area,
+        );
+        render_provider_detail(frame, detail_area, row, theme);
+    } else {
+        frame.render_widget(
+            Paragraph::new("No provider activity in this time range.").style(theme.muted_style()),
+            detail_area,
+        );
+    }
+}
+
+fn focus_provider_line(
+    row: &ProviderUsageRow,
+    focused_provider_index: usize,
+    providers: &[ProviderUsageRow],
+    theme: &Theme,
+) -> Line<'static> {
+    let total = providers.len().max(1);
+    Line::from(vec![
+        Span::styled(
+            format!("  ● {}", truncate_label(&row.provider_id, 26)),
+            Style::default().fg(theme.series_color(focused_provider_index)),
+        ),
+        Span::styled(format!("  ({:.1}%)", row.percentage), theme.muted_style()),
+        Span::styled("  |  ", theme.muted_style()),
+        Span::styled(
+            format!("{}/{}", focused_provider_index.min(total - 1) + 1, total),
+            theme.muted_style(),
+        ),
+        Span::styled("  |  ", theme.muted_style()),
+        Span::styled("j/k ↑/↓ cycle", theme.muted_style()),
+    ])
+}
+
+fn render_provider_detail(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    row: &ProviderUsageRow,
+    theme: &Theme,
+) {
+    let [top_left, top_mid, top_right] = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(33),
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+        ])
+        .areas(Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: 1,
+        });
+    let [bottom_left, bottom_mid, bottom_right] = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(33),
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+        ])
+        .areas(Rect {
+            x: area.x,
+            y: area.y + 1,
+            width: area.width,
+            height: 1,
+        });
+
+    frame.render_widget(
+        Paragraph::new(metric_line(
+            "Tokens ",
+            format_tokens(row.total_tokens),
+            theme,
+        )),
+        top_left,
+    );
+    frame.render_widget(
+        Paragraph::new(metric_line("Cost ", format_price_summary(&row.cost), theme)),
         top_mid,
     );
     frame.render_widget(

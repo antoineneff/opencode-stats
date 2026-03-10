@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
-use rust_decimal::Decimal;
 
 use crate::cache::models_cache::PricingCatalog;
 use crate::db::models::{TokenUsage, UsageEvent};
 use crate::utils::formatting::percentage;
+use crate::utils::pricing::PriceSummary;
 use crate::utils::time::TimeRange;
 
 #[derive(Clone, Debug)]
@@ -15,7 +15,19 @@ pub struct ModelUsageRow {
     pub interactions: usize,
     pub sessions: usize,
     pub active_days: usize,
-    pub cost: Decimal,
+    pub cost: PriceSummary,
+    pub percentage: f64,
+    pub p50_output_tokens_per_second: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ProviderUsageRow {
+    pub provider_id: String,
+    pub total_tokens: u64,
+    pub interactions: usize,
+    pub sessions: usize,
+    pub active_days: usize,
+    pub cost: PriceSummary,
     pub percentage: f64,
     pub p50_output_tokens_per_second: f64,
 }
@@ -42,8 +54,7 @@ pub fn build_model_chart(
     _range: TimeRange,
     today: NaiveDate,
 ) -> (Vec<ModelUsageRow>, ModelChartData) {
-    let mut model_rows = BTreeMap::<String, ModelUsageAccumulator>::new();
-    let mut date_set = BTreeSet::<NaiveDate>::new();
+    let mut model_rows = BTreeMap::<String, UsageAccumulator>::new();
 
     for event in events {
         let model = event.model_id.clone();
@@ -51,11 +62,10 @@ pub fn build_model_chart(
         entry.tokens.add_assign(&event.tokens);
         entry.interactions += 1;
         entry.sessions.insert(event.session_id.clone());
-        entry.cost += pricing.cost_for_event(event);
+        update_cost(&mut entry.cost, pricing, event);
         if let Some(date) = event.activity_date() {
             entry.active_days.insert(date);
             *entry.daily_tokens.entry(date).or_default() += event.tokens.total();
-            date_set.insert(date);
         }
         if event.is_rate_eligible() {
             if let Some(duration_ms) = event.duration_ms() {
@@ -89,7 +99,70 @@ pub fn build_model_chart(
         .iter()
         .map(|row| row.model_id.clone())
         .collect::<Vec<_>>();
-    let chart = build_chart_for_models(events, &top_models, today);
+    let chart = build_chart_for_models(events, &top_models, today, |event| event.model_id.clone());
+    (rows, chart)
+}
+
+pub fn build_provider_chart(
+    events: &[UsageEvent],
+    pricing: &PricingCatalog,
+    _range: TimeRange,
+    today: NaiveDate,
+) -> (Vec<ProviderUsageRow>, ModelChartData) {
+    let mut provider_rows = BTreeMap::<String, UsageAccumulator>::new();
+
+    for event in events {
+        let provider = event
+            .provider_id
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let entry = provider_rows.entry(provider).or_default();
+        entry.tokens.add_assign(&event.tokens);
+        entry.interactions += 1;
+        entry.sessions.insert(event.session_id.clone());
+        update_cost(&mut entry.cost, pricing, event);
+        if let Some(date) = event.activity_date() {
+            entry.active_days.insert(date);
+            *entry.daily_tokens.entry(date).or_default() += event.tokens.total();
+        }
+        if event.is_rate_eligible() {
+            if let Some(duration_ms) = event.duration_ms() {
+                let rate = event.tokens.output as f64 / (duration_ms as f64 / 1_000.0);
+                entry.output_rates.push(rate);
+            }
+        }
+    }
+
+    let overall_tokens = provider_rows
+        .values()
+        .map(|row| row.tokens.total())
+        .sum::<u64>();
+    let mut rows = provider_rows
+        .into_iter()
+        .map(|(provider_id, row)| ProviderUsageRow {
+            provider_id,
+            total_tokens: row.tokens.total(),
+            percentage: percentage(row.tokens.total(), overall_tokens),
+            interactions: row.interactions,
+            sessions: row.sessions.len(),
+            active_days: row.active_days.len(),
+            cost: row.cost,
+            p50_output_tokens_per_second: median(&row.output_rates),
+        })
+        .collect::<Vec<_>>();
+
+    rows.sort_by(|left, right| right.total_tokens.cmp(&left.total_tokens));
+
+    let providers = rows
+        .iter()
+        .map(|row| row.provider_id.clone())
+        .collect::<Vec<_>>();
+    let chart = build_chart_for_models(events, &providers, today, |event| {
+        event
+            .provider_id
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string())
+    });
     (rows, chart)
 }
 
@@ -112,18 +185,23 @@ pub fn chart_with_focus(chart: &ModelChartData, focused_model_id: Option<&str>) 
     }
 }
 
-fn build_chart_for_models(
+fn build_chart_for_models<F>(
     events: &[UsageEvent],
     top_models: &[String],
     today: NaiveDate,
-) -> ModelChartData {
+    key_fn: F,
+) -> ModelChartData
+where
+    F: Fn(&UsageEvent) -> String,
+{
     let mut daily_values = BTreeMap::<String, BTreeMap<NaiveDate, u64>>::new();
     let mut min_date = today;
     let mut max_date = today;
     let mut has_dates = false;
 
     for event in events {
-        if !top_models.contains(&event.model_id) {
+        let key = key_fn(event);
+        if !top_models.contains(&key) {
             continue;
         }
         let Some(date) = event.activity_date() else {
@@ -137,7 +215,7 @@ fn build_chart_for_models(
             max_date = date;
         }
         *daily_values
-            .entry(event.model_id.clone())
+            .entry(key)
             .or_default()
             .entry(date)
             .or_default() += event.tokens.total();
@@ -248,14 +326,29 @@ fn format_tick_label(value: f64) -> String {
 }
 
 #[derive(Default)]
-struct ModelUsageAccumulator {
+struct UsageAccumulator {
     tokens: TokenUsage,
     interactions: usize,
     sessions: BTreeSet<String>,
     active_days: BTreeSet<NaiveDate>,
-    cost: Decimal,
+    cost: PriceSummary,
     daily_tokens: BTreeMap<NaiveDate, u64>,
     output_rates: Vec<f64>,
+}
+
+fn update_cost(summary: &mut PriceSummary, pricing: &PricingCatalog, event: &UsageEvent) {
+    if let Some(cost) = event.stored_cost_usd {
+        if cost > rust_decimal::Decimal::ZERO {
+            summary.add_known(cost);
+            return;
+        }
+    }
+
+    if pricing.has_pricing_for_event(event) {
+        summary.add_known(pricing.cost_for_event(event));
+    } else {
+        summary.add_missing();
+    }
 }
 
 fn median(values: &[f64]) -> f64 {

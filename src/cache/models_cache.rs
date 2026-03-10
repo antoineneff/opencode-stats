@@ -54,9 +54,10 @@ impl PricingCatalog {
         let cached = load_cached_models(&cache_path).unwrap_or_default();
         let config = opencode_config::load_pricing_overrides()?;
         let refresh_needed = cache_is_stale(&cache_path).unwrap_or(true);
+        let merged = merge_with_priority(cached, config);
 
         Ok(Self {
-            models: merge_with_priority(cached, config),
+            models: merged,
             cache_path,
             refresh_needed,
         })
@@ -68,9 +69,10 @@ impl PricingCatalog {
 
     pub fn lookup_for_event(&self, event: &UsageEvent) -> Option<&ModelPricing> {
         if let Some(key) = event.pricing_model_id() {
-            if let Some(value) = lookup_model(&self.models, &key) {
+            if let Some(value) = lookup_exact_model(&self.models, &key) {
                 return Some(value);
             }
+            return None;
         }
 
         if event.provider_id.is_none() {
@@ -93,10 +95,15 @@ impl PricingCatalog {
         price_tokens(&event.tokens, pricing)
     }
 
+    pub fn has_pricing_for_event(&self, event: &UsageEvent) -> bool {
+        self.lookup_for_event(event).is_some()
+    }
+
     fn from_sources(cache_path: PathBuf, remote: BTreeMap<String, ModelPricing>) -> Result<Self> {
         let config = opencode_config::load_pricing_overrides()?;
+        let merged = merge_with_priority(remote, config);
         Ok(Self {
-            models: merge_with_priority(remote, config),
+            models: merged,
             cache_path,
             refresh_needed: false,
         })
@@ -207,6 +214,19 @@ fn lookup_model<'a>(
     }
 
     None
+}
+
+fn lookup_exact_model<'a>(
+    models: &'a BTreeMap<String, ModelPricing>,
+    model_id: &str,
+) -> Option<&'a ModelPricing> {
+    let lowercase = model_id.to_lowercase();
+    if let Some(value) = models.get(&lowercase) {
+        return Some(value);
+    }
+
+    let normalized = normalize_model_key(model_id);
+    models.get(&normalized)
 }
 
 pub(crate) fn map_models_root_to_local(

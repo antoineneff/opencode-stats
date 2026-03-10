@@ -6,7 +6,7 @@ use crate::analytics::AnalyticsSnapshot;
 use crate::ui::theme::Theme;
 use crate::ui::widgets::common::{left_aligned_content, metric_line};
 use crate::ui::widgets::heatmap::HeatmapWidget;
-use crate::utils::formatting::{format_tokens, format_usd_precise};
+use crate::utils::formatting::{format_price_summary, format_tokens};
 
 pub fn render_overview(
     frame: &mut ratatui::Frame<'_>,
@@ -87,7 +87,7 @@ pub fn render_overview(
     let right_text = Text::from(vec![
         metric_line(
             "Total cost: ",
-            format_usd_precise(snapshot.overview.total_cost),
+            format_price_summary(&snapshot.overview.total_cost),
             theme,
         ),
         metric_line(

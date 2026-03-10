@@ -5,13 +5,14 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{DefaultTerminal, Frame, TerminalOptions, Viewport};
 use tokio::sync::mpsc;
 
-use crate::analytics::{build_snapshot, AnalyticsSnapshot};
-use crate::cache::models_cache::{refresh_remote_models, PricingCatalog};
+use crate::analytics::{AnalyticsSnapshot, build_snapshot};
+use crate::cache::models_cache::{PricingCatalog, refresh_remote_models};
 use crate::db::models::AppData;
-use crate::ui::models::render_models;
+use crate::ui::models::{render_models, render_providers};
 use crate::ui::overview::render_overview;
 use crate::ui::theme::{Theme, ThemeMode};
-use crate::ui::widgets::common::{left_aligned_content, segment_span, CONTENT_WIDTH};
+use crate::ui::widgets::common::{CONTENT_WIDTH, left_aligned_content, segment_span};
+use crate::utils::formatting::format_price_summary;
 use crate::utils::time::TimeRange;
 
 const VIEWPORT_HEIGHT: u16 = 23;
@@ -28,18 +29,24 @@ pub enum Page {
     #[default]
     Overview,
     Models,
+    Providers,
 }
 
 impl Page {
     pub fn next(self) -> Self {
         match self {
             Self::Overview => Self::Models,
-            Self::Models => Self::Overview,
+            Self::Models => Self::Providers,
+            Self::Providers => Self::Overview,
         }
     }
 
     pub fn previous(self) -> Self {
-        self.next()
+        match self {
+            Self::Overview => Self::Providers,
+            Self::Models => Self::Overview,
+            Self::Providers => Self::Models,
+        }
     }
 }
 
@@ -53,6 +60,7 @@ pub struct App {
     pub should_quit: bool,
     status_message: Option<StatusMessage>,
     pub focused_model_index: usize,
+    pub focused_provider_index: usize,
     pricing_updates: mpsc::UnboundedReceiver<PricingCatalog>,
 }
 
@@ -75,6 +83,7 @@ impl App {
             should_quit: false,
             status_message: None,
             focused_model_index: 0,
+            focused_provider_index: 0,
             pricing_updates: receiver,
         }
     }
@@ -153,6 +162,14 @@ impl App {
                 self.focused_model_index,
                 &theme,
             ),
+            Page::Providers => render_providers(
+                frame,
+                body,
+                &self.snapshot,
+                self.range,
+                self.focused_provider_index,
+                &theme,
+            ),
         }
 
         self.render_footer(frame, footer, &theme);
@@ -162,19 +179,18 @@ impl App {
         let content = left_aligned_content(area);
         let line = ratatui::text::Line::from(vec![
             segment_span("Overview", self.page == Page::Overview, theme),
-            ratatui::text::Span::raw(" "),
+            // ratatui::text::Span::raw(" "),
             segment_span("Models", self.page == Page::Models, theme),
+            // ratatui::text::Span::raw(" "),
+            segment_span("Providers", self.page == Page::Providers, theme),
             ratatui::text::Span::raw("     "),
             segment_span(" All ", self.range == TimeRange::All, theme),
-            ratatui::text::Span::raw(" "),
+            // ratatui::text::Span::raw(" "),
             segment_span("7 Days", self.range == TimeRange::Last7Days, theme),
-            ratatui::text::Span::raw(" "),
+            // ratatui::text::Span::raw(" "),
             segment_span("30 Days", self.range == TimeRange::Last30Days, theme),
             ratatui::text::Span::raw("     "),
-            ratatui::text::Span::styled(
-                format!("Source: {:?}", self.data.source),
-                theme.muted_style(),
-            ),
+            ratatui::text::Span::styled(format!("{:?}", self.data.source), theme.muted_style()),
         ]);
 
         frame.render_widget(ratatui::widgets::Paragraph::new(line), content);
@@ -202,6 +218,7 @@ impl App {
             KeyCode::Char('r') => {
                 self.range = self.range.cycle();
                 self.focused_model_index = 0;
+                self.focused_provider_index = 0;
                 self.recompute();
             }
             KeyCode::Char(value)
@@ -213,6 +230,7 @@ impl App {
                 if let Some(range) = TimeRange::from_shortcut(value) {
                     self.range = range;
                     self.focused_model_index = 0;
+                    self.focused_provider_index = 0;
                     self.recompute();
                 }
             }
@@ -221,14 +239,29 @@ impl App {
     }
 
     fn advance_focused_model(&mut self, delta: isize) {
-        if self.page != Page::Models || self.snapshot.models.is_empty() {
-            return;
-        }
+        match self.page {
+            Page::Models => {
+                if self.snapshot.models.is_empty() {
+                    return;
+                }
 
-        let current = self.focused_model_index as isize;
-        let total = self.snapshot.models.len() as isize;
-        let next = (current + delta).rem_euclid(total) as usize;
-        self.focused_model_index = next;
+                let current = self.focused_model_index as isize;
+                let total = self.snapshot.models.len() as isize;
+                let next = (current + delta).rem_euclid(total) as usize;
+                self.focused_model_index = next;
+            }
+            Page::Providers => {
+                if self.snapshot.providers.is_empty() {
+                    return;
+                }
+
+                let current = self.focused_provider_index as isize;
+                let total = self.snapshot.providers.len() as isize;
+                let next = (current + delta).rem_euclid(total) as usize;
+                self.focused_provider_index = next;
+            }
+            Page::Overview => {}
+        }
     }
 
     fn set_status(&mut self, text: impl Into<String>) {
@@ -254,7 +287,7 @@ impl App {
                 "oc-stats {}\nTokens: {}\nCost: {}\nSessions: {}\nInteractions: {}",
                 self.range.label(),
                 self.snapshot.overview.total_tokens,
-                self.snapshot.overview.total_cost,
+                format_price_summary(&self.snapshot.overview.total_cost),
                 self.snapshot.overview.sessions,
                 self.snapshot.overview.interactions,
             ),
@@ -267,6 +300,19 @@ impl App {
                     format!(
                         "{}: {} tokens ({:.1}%)",
                         row.model_id, row.total_tokens, row.percentage
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            Page::Providers => self
+                .snapshot
+                .providers
+                .iter()
+                .take(8)
+                .map(|row| {
+                    format!(
+                        "{}: {} tokens ({:.1}%)",
+                        row.provider_id, row.total_tokens, row.percentage
                     )
                 })
                 .collect::<Vec<_>>()

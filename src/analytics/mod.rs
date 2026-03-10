@@ -7,15 +7,17 @@ pub mod weekly;
 use std::collections::BTreeSet;
 
 use chrono::NaiveDate;
-use rust_decimal::Decimal;
 
 use crate::analytics::daily::aggregate_daily;
 use crate::analytics::heatmap_data::{build_heatmap_data, HeatmapData};
-use crate::analytics::model_stats::{build_model_chart, ModelChartData, ModelUsageRow};
+use crate::analytics::model_stats::{
+    build_model_chart, build_provider_chart, ModelChartData, ModelUsageRow, ProviderUsageRow,
+};
 use crate::analytics::monthly::aggregate_monthly;
 use crate::analytics::weekly::aggregate_weekly;
 use crate::cache::models_cache::PricingCatalog;
 use crate::db::models::{AppData, UsageEvent};
+use crate::utils::pricing::PriceSummary;
 use crate::utils::time::{current_local_date, TimeRange};
 
 #[derive(Clone, Debug)]
@@ -24,7 +26,7 @@ pub struct OverviewStats {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cache_tokens: u64,
-    pub total_cost: Decimal,
+    pub total_cost: PriceSummary,
     pub sessions: usize,
     pub interactions: usize,
     pub models_used: usize,
@@ -37,6 +39,8 @@ pub struct AnalyticsSnapshot {
     pub overview: OverviewStats,
     pub models: Vec<ModelUsageRow>,
     pub chart: ModelChartData,
+    pub providers: Vec<ProviderUsageRow>,
+    pub provider_chart: ModelChartData,
     pub heatmap: HeatmapData,
 }
 
@@ -51,6 +55,7 @@ pub fn build_snapshot(
     let weekly = aggregate_weekly(&daily, 0);
     let _monthly = aggregate_monthly(&weekly);
     let (models, chart) = build_model_chart(&filtered_events, pricing, range, today);
+    let (providers, provider_chart) = build_provider_chart(&filtered_events, pricing, range, today);
     let heatmap = build_heatmap_data(&data.events, today);
 
     let total_tokens = filtered_events
@@ -69,10 +74,21 @@ pub fn build_snapshot(
         .iter()
         .map(|event| event.tokens.cache_read + event.tokens.cache_write)
         .sum::<u64>();
-    let total_cost = filtered_events
-        .iter()
-        .map(|event| pricing.cost_for_event(event))
-        .sum::<Decimal>();
+    let mut total_cost = PriceSummary::default();
+    for event in &filtered_events {
+        if let Some(cost) = event.stored_cost_usd {
+            if cost > rust_decimal::Decimal::ZERO {
+                total_cost.add_known(cost);
+                continue;
+            }
+        }
+
+        if pricing.lookup_for_event(event).is_some() {
+            total_cost.add_known(pricing.cost_for_event(event));
+        } else {
+            total_cost.add_missing();
+        }
+    }
     let sessions = filtered_events
         .iter()
         .map(|event| event.session_id.clone())
@@ -101,6 +117,8 @@ pub fn build_snapshot(
         },
         models,
         chart,
+        providers,
+        provider_chart,
         heatmap,
     }
 }

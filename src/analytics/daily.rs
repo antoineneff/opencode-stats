@@ -1,15 +1,15 @@
-use chrono::NaiveDate;
-use rust_decimal::Decimal;
-
 use crate::cache::models_cache::PricingCatalog;
 use crate::db::models::{TokenUsage, UsageEvent};
+use crate::utils::pricing::PriceSummary;
+use chrono::NaiveDate;
+use rust_decimal::Decimal;
 
 #[derive(Clone, Debug)]
 pub struct DailyUsage {
     pub date: NaiveDate,
     pub tokens: TokenUsage,
     pub interactions: usize,
-    pub cost: Decimal,
+    pub cost: PriceSummary,
 }
 
 pub fn aggregate_daily(
@@ -29,11 +29,22 @@ pub fn aggregate_daily(
             date,
             tokens: TokenUsage::default(),
             interactions: 0,
-            cost: Decimal::ZERO,
+            cost: PriceSummary::default(),
         });
         entry.tokens.add_assign(&event.tokens);
         entry.interactions += 1;
-        entry.cost += pricing.cost_for_event(event);
+        if let Some(cost) = event.stored_cost_usd {
+            if cost > Decimal::ZERO {
+                entry.cost.add_known(cost);
+                continue;
+            }
+        }
+
+        if pricing.has_pricing_for_event(event) {
+            entry.cost.add_known(pricing.cost_for_event(event));
+        } else {
+            entry.cost.add_missing();
+        }
     }
 
     grouped.into_values().collect()

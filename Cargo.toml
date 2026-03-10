@@ -1,7 +1,7 @@
 [package]
 name = "oc-stats"
 description = "A terminal dashboard for OpenCode usage statistics"
-version = "1.0.2"
+version = "1.1.0"
 edition = "2024"
 
 [dependencies]
