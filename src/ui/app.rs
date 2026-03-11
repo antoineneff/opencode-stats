@@ -26,7 +26,19 @@ const STATUS_TTL: Duration = Duration::from_secs(1);
 #[derive(Clone, Debug)]
 struct StatusMessage {
     text: String,
-    expires_at: Instant,
+    expires_at: Option<Instant>,
+}
+
+#[derive(Debug)]
+struct ClipboardJob {
+    buffer: ratatui::buffer::Buffer,
+    theme: Theme,
+    summary: String,
+}
+
+#[derive(Debug)]
+struct ClipboardUpdate {
+    message: String,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -67,12 +79,16 @@ pub struct App {
     pub focused_model_index: usize,
     pub focused_provider_index: usize,
     pricing_updates: mpsc::UnboundedReceiver<PricingCatalog>,
+    clipboard_sender: mpsc::UnboundedSender<ClipboardUpdate>,
+    clipboard_updates: mpsc::UnboundedReceiver<ClipboardUpdate>,
+    copy_in_progress: bool,
 }
 
 impl App {
     pub fn new(data: AppData, pricing: PricingCatalog, theme_mode: ThemeMode) -> Self {
         let snapshot = build_snapshot(&data, &pricing, TimeRange::All);
         let (sender, receiver) = mpsc::unbounded_channel();
+        let (clipboard_sender, clipboard_updates) = mpsc::unbounded_channel();
         if pricing.refresh_needed {
             let cache_path = pricing.cache_path.clone();
             tokio::spawn(refresh_remote_models(cache_path, sender));
@@ -90,6 +106,9 @@ impl App {
             focused_model_index: 0,
             focused_provider_index: 0,
             pricing_updates: receiver,
+            clipboard_sender,
+            clipboard_updates,
+            copy_in_progress: false,
         }
     }
 
@@ -118,6 +137,10 @@ impl App {
                 self.pricing = pricing;
                 self.recompute();
                 self.set_status("Pricing cache refreshed from models.dev");
+            }
+            while let Ok(update) = self.clipboard_updates.try_recv() {
+                self.copy_in_progress = false;
+                self.set_status(update.message);
             }
 
             terminal.draw(|frame| self.render(frame))?;
@@ -271,7 +294,14 @@ impl App {
     fn set_status(&mut self, text: impl Into<String>) {
         self.status_message = Some(StatusMessage {
             text: text.into(),
-            expires_at: Instant::now() + STATUS_TTL,
+            expires_at: Some(Instant::now() + STATUS_TTL),
+        });
+    }
+
+    fn set_persistent_status(&mut self, text: impl Into<String>) {
+        self.status_message = Some(StatusMessage {
+            text: text.into(),
+            expires_at: None,
         });
     }
 
@@ -279,7 +309,8 @@ impl App {
         if self
             .status_message
             .as_ref()
-            .is_some_and(|status| Instant::now() >= status.expires_at)
+            .and_then(|status| status.expires_at)
+            .is_some_and(|expires_at| Instant::now() >= expires_at)
         {
             self.status_message = None;
         }
@@ -293,13 +324,38 @@ impl App {
     }
 
     fn copy_current_page(&mut self) {
-        match self.copy_current_page_image() {
-            Ok(()) => self.set_status("Copied current page image to clipboard"),
-            Err(_) => match self.copy_current_page_text() {
-                Ok(()) => self.set_status("Image export failed, copied text summary instead"),
-                Err(err) => self.set_status(format!("Copy failed: {err}")),
-            },
+        if self.copy_in_progress {
+            self.set_persistent_status("Rendering share card...");
+            return;
         }
+
+        let job = match self.prepare_clipboard_job() {
+            Ok(job) => job,
+            Err(err) => {
+                self.set_status(format!("Copy failed: {err}"));
+                return;
+            }
+        };
+
+        self.copy_in_progress = true;
+        self.set_persistent_status("Rendering share card...");
+
+        let sender = self.clipboard_sender.clone();
+        tokio::task::spawn_blocking(move || {
+            let message = match copy_clipboard_job(job) {
+                Ok(message) => message,
+                Err(err) => format!("Copy failed: {err}"),
+            };
+            let _ = sender.send(ClipboardUpdate { message });
+        });
+    }
+
+    fn prepare_clipboard_job(&self) -> Result<ClipboardJob> {
+        Ok(ClipboardJob {
+            buffer: self.capture_current_page_buffer()?,
+            theme: Theme::from_mode(self.theme_mode),
+            summary: self.current_page_summary(),
+        })
     }
 
     fn current_page_summary(&self) -> String {
@@ -340,26 +396,33 @@ impl App {
                 .join("\n"),
         }
     }
+}
 
-    fn copy_current_page_text(&self) -> Result<()> {
-        let summary = self.current_page_summary();
-        let mut clipboard = arboard::Clipboard::new()?;
-        clipboard.set_text(summary)?;
-        Ok(())
+fn copy_clipboard_job(job: ClipboardJob) -> Result<String> {
+    match copy_image_to_clipboard(job.buffer, job.theme) {
+        Ok(()) => Ok("Successfully copied to your clipboard".to_string()),
+        Err(_) => {
+            copy_text_to_clipboard(&job.summary)?;
+            Ok("Image export failed, copied text summary instead".to_string())
+        }
     }
+}
 
-    fn copy_current_page_image(&self) -> Result<()> {
-        let theme = Theme::from_mode(self.theme_mode);
-        let buffer = self.capture_current_page_buffer()?;
-        let image = render_share_card(&buffer, &theme)?;
-        let mut clipboard = arboard::Clipboard::new()?;
-        clipboard.set_image(arboard::ImageData {
-            width: image.width() as usize,
-            height: image.height() as usize,
-            bytes: Cow::Owned(image.into_raw()),
-        })?;
-        Ok(())
-    }
+fn copy_text_to_clipboard(summary: &str) -> Result<()> {
+    let mut clipboard = arboard::Clipboard::new()?;
+    clipboard.set_text(summary.to_string())?;
+    Ok(())
+}
+
+fn copy_image_to_clipboard(buffer: ratatui::buffer::Buffer, theme: Theme) -> Result<()> {
+    let image = render_share_card(&buffer, &theme)?;
+    let mut clipboard = arboard::Clipboard::new()?;
+    clipboard.set_image(arboard::ImageData {
+        width: image.width() as usize,
+        height: image.height() as usize,
+        bytes: Cow::Owned(image.into_raw()),
+    })?;
+    Ok(())
 }
 
 fn print_exit_art() {

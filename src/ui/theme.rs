@@ -28,7 +28,6 @@ impl FromStr for ThemeMode {
 #[derive(Clone, Debug)]
 pub struct Theme {
     pub foreground: Color,
-    pub background: Color,
     pub card_background: Color,
     pub card_border: Color,
     pub card_shadow: Color,
@@ -47,7 +46,6 @@ impl Theme {
         match mode {
             ThemeMode::Dark => Self {
                 foreground: Color::Rgb(229, 233, 240),
-                background: Color::Rgb(14, 18, 24),
                 card_background: Color::Rgb(28, 33, 43),
                 card_border: Color::Rgb(120, 130, 155),
                 card_shadow: Color::Rgb(0, 0, 0),
@@ -75,7 +73,6 @@ impl Theme {
             },
             ThemeMode::Light => Self {
                 foreground: Color::Rgb(37, 41, 51),
-                background: Color::Rgb(243, 246, 251),
                 card_background: Color::Rgb(252, 253, 255),
                 card_border: Color::Rgb(173, 183, 201),
                 card_shadow: Color::Rgb(96, 107, 128),

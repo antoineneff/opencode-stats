@@ -1,5 +1,6 @@
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
 use anyhow::{Context, Result};
+use image::imageops::{blur, overlay};
 use image::{Rgba, RgbaImage};
 use imageproc::drawing::{draw_filled_circle_mut, draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect as ImageRect;
@@ -19,6 +20,11 @@ const FONT_SIZE: f32 = 24.0;
 const MIN_LINE_GAP: u32 = 0;
 const GLYPH_X_OFFSET: i32 = -1;
 const GLYPH_Y_OFFSET: i32 = 1;
+const SHADOW_PADDING_X: u32 = 52;
+const SHADOW_PADDING_Y: u32 = 58;
+const SHADOW_BLUR_SIGMA: f32 = 25.0;
+const SHADOW_ALPHA: u8 = 72;
+const SHADOW_OFFSET_Y: u32 = 14;
 
 static FONT_REGULAR: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -39,12 +45,12 @@ pub fn render_share_card(buffer: &Buffer, theme: &Theme) -> Result<RgbaImage> {
     let terminal_height = u32::from(content_buffer.area.height) * metrics.cell_height;
     let card_width = terminal_width + CARD_INSET_X * 2;
     let card_height = terminal_height + CARD_INSET_Y * 2;
-    let image_width = card_width + CARD_OUTER_MARGIN_X * 2;
-    let image_height = card_height + CARD_OUTER_MARGIN_Y * 2;
+    let image_width = card_width + CARD_OUTER_MARGIN_X * 2 + SHADOW_PADDING_X * 2;
+    let image_height = card_height + CARD_OUTER_MARGIN_Y * 2 + SHADOW_PADDING_Y * 2;
 
-    let mut image = RgbaImage::from_pixel(image_width, image_height, palette.outer_background);
-    let card_x = CARD_OUTER_MARGIN_X;
-    let card_y = CARD_OUTER_MARGIN_Y;
+    let mut image = RgbaImage::from_pixel(image_width, image_height, TRANSPARENT);
+    let card_x = CARD_OUTER_MARGIN_X + SHADOW_PADDING_X;
+    let card_y = CARD_OUTER_MARGIN_Y + SHADOW_PADDING_Y;
 
     draw_shadow_layers(
         &mut image,
@@ -147,7 +153,6 @@ impl Metrics {
 }
 
 struct ExportPalette {
-    outer_background: Rgba<u8>,
     card_background: Rgba<u8>,
     card_border: Rgba<u8>,
     shadow: Rgba<u8>,
@@ -158,7 +163,6 @@ struct ExportPalette {
 impl ExportPalette {
     fn from_theme(theme: &Theme) -> Self {
         Self {
-            outer_background: rgba_from_color(theme.background),
             card_background: rgba_from_color(theme.card_background),
             card_border: rgba_from_color(theme.card_border),
             shadow: rgba_from_color(theme.card_shadow),
@@ -199,18 +203,19 @@ fn draw_shadow_layers(
     height: u32,
     palette: &ExportPalette,
 ) {
-    for (spread, offset_y, alpha) in [(14_u32, 16_u32, 0.10_f32), (8, 10, 0.16), (4, 4, 0.22)] {
-        let color = mix_rgba(palette.outer_background, palette.shadow, alpha);
-        draw_filled_rounded_rect(
-            image,
-            x.saturating_sub(spread),
-            y.saturating_sub(spread / 2) + offset_y,
-            width + spread * 2,
-            height + spread * 2,
-            CARD_RADIUS + spread,
-            color,
-        );
-    }
+    let mut shadow = RgbaImage::from_pixel(image.width(), image.height(), TRANSPARENT);
+    draw_filled_rounded_rect(
+        &mut shadow,
+        x,
+        y + SHADOW_OFFSET_Y,
+        width,
+        height,
+        CARD_RADIUS,
+        with_alpha(palette.shadow, SHADOW_ALPHA),
+    );
+
+    let blurred = blur(&shadow, SHADOW_BLUR_SIGMA);
+    overlay(image, &blurred, 0, 0);
 }
 
 fn draw_buffer_backgrounds(
@@ -363,8 +368,14 @@ fn color_to_rgba(color: Color, default: Rgba<u8>) -> Rgba<u8> {
     }
 }
 
+const TRANSPARENT: Rgba<u8> = Rgba([0, 0, 0, 0]);
+
 fn rgba_from_color(color: Color) -> Rgba<u8> {
     color_to_rgba(color, Rgba([0, 0, 0, 255]))
+}
+
+fn with_alpha(color: Rgba<u8>, alpha: u8) -> Rgba<u8> {
+    Rgba([color[0], color[1], color[2], alpha])
 }
 
 fn xterm_index_to_rgba(index: u8) -> Rgba<u8> {
@@ -403,17 +414,4 @@ fn xterm_index_to_rgba(index: u8) -> Rgba<u8> {
     let b = palette_index % 6;
     let component = |value: u8| if value == 0 { 0 } else { value * 40 + 55 };
     Rgba([component(r), component(g), component(b), 255])
-}
-
-fn mix_rgba(base: Rgba<u8>, top: Rgba<u8>, alpha: f32) -> Rgba<u8> {
-    let blend = |base_channel: u8, top_channel: u8| {
-        ((base_channel as f32 * (1.0 - alpha)) + (top_channel as f32 * alpha)).round() as u8
-    };
-
-    Rgba([
-        blend(base[0], top[0]),
-        blend(base[1], top[1]),
-        blend(base[2], top[2]),
-        255,
-    ])
 }
