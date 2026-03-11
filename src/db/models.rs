@@ -101,7 +101,6 @@ pub struct SessionSummary {
 }
 
 impl SessionSummary {
-    #[allow(dead_code)]
     pub fn from_events(session_id: String, events: Vec<UsageEvent>) -> Option<Self> {
         let first = events.first()?;
         let title = first
@@ -160,7 +159,6 @@ impl SessionSummary {
         self.events.len()
     }
 
-    #[allow(dead_code)]
     pub fn start_time(&self) -> Option<DateTime<Local>> {
         self.events
             .iter()

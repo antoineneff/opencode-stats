@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
 
-use crate::analytics::heatmap_data::{weekday_labels, HeatmapData};
+use crate::analytics::heatmap_data::{HeatmapData, weekday_labels};
 use crate::ui::theme::Theme;
 
 pub struct HeatmapWidget<'a> {

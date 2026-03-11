@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-use crate::cache::models_cache::{map_models_root_to_local, ModelPricing};
+use crate::cache::models_cache::{ModelPricing, map_models_root_to_local};
 
 pub fn load_pricing_overrides() -> Result<BTreeMap<String, ModelPricing>> {
     let merged = load_merged_config()?;

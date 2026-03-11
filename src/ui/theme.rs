@@ -27,6 +27,11 @@ impl FromStr for ThemeMode {
 
 #[derive(Clone, Debug)]
 pub struct Theme {
+    pub foreground: Color,
+    pub background: Color,
+    pub card_background: Color,
+    pub card_border: Color,
+    pub card_shadow: Color,
     pub muted: Color,
     pub accent: Color,
     pub comparison: Color,
@@ -41,6 +46,11 @@ impl Theme {
     pub fn from_mode(mode: ThemeMode) -> Self {
         match mode {
             ThemeMode::Dark => Self {
+                foreground: Color::Rgb(229, 233, 240),
+                background: Color::Rgb(14, 18, 24),
+                card_background: Color::Rgb(28, 33, 43),
+                card_border: Color::Rgb(120, 130, 155),
+                card_shadow: Color::Rgb(0, 0, 0),
                 muted: Color::Rgb(128, 134, 152),
                 accent: Color::Rgb(136, 192, 208),
                 comparison: Color::Rgb(180, 190, 254),
@@ -64,6 +74,11 @@ impl Theme {
                 ],
             },
             ThemeMode::Light => Self {
+                foreground: Color::Rgb(37, 41, 51),
+                background: Color::Rgb(243, 246, 251),
+                card_background: Color::Rgb(252, 253, 255),
+                card_border: Color::Rgb(173, 183, 201),
+                card_shadow: Color::Rgb(96, 107, 128),
                 muted: Color::Rgb(90, 98, 115),
                 accent: Color::Rgb(0, 122, 163),
                 comparison: Color::Rgb(94, 92, 230),

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -5,12 +6,13 @@ use colored::Colorize;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Layout};
 use ratatui::widgets::{Block, Padding};
-use ratatui::{DefaultTerminal, Frame, TerminalOptions, Viewport};
+use ratatui::{DefaultTerminal, Frame, Terminal, TerminalOptions, Viewport, backend::TestBackend};
 use tokio::sync::mpsc;
 
 use crate::analytics::{AnalyticsSnapshot, build_snapshot};
 use crate::cache::models_cache::{PricingCatalog, refresh_remote_models};
 use crate::db::models::AppData;
+use crate::ui::export::render_share_card;
 use crate::ui::models::{render_models, render_providers};
 use crate::ui::overview::render_overview;
 use crate::ui::theme::{Theme, ThemeMode};
@@ -203,7 +205,7 @@ impl App {
             .status_message
             .as_ref()
             .map(|status| status.text.as_str())
-            .unwrap_or("<tab> ←/→ h/l pages | r cycle | 1/2/3 pick | <ctrl-s> copy | q exit");
+            .unwrap_or("<tab> ←/→ h/l pages | r cycle | 1/2/3 pick | <ctrl-s> share | q exit");
         frame.render_widget(
             ratatui::widgets::Paragraph::new(status).style(theme.muted_style()),
             area,
@@ -226,7 +228,7 @@ impl App {
             KeyCode::Char(value)
                 if key.modifiers.contains(KeyModifiers::CONTROL) && value == 's' =>
             {
-                self.copy_summary();
+                self.copy_current_page();
             }
             KeyCode::Char(value) => {
                 if let Some(range) = TimeRange::from_shortcut(value) {
@@ -283,8 +285,25 @@ impl App {
         }
     }
 
-    fn copy_summary(&mut self) {
-        let summary = match self.page {
+    fn capture_current_page_buffer(&self) -> Result<ratatui::buffer::Buffer> {
+        let backend = TestBackend::new(CONTENT_WIDTH, VIEWPORT_HEIGHT);
+        let mut terminal = Terminal::new(backend)?;
+        let frame = terminal.draw(|frame| self.render(frame))?;
+        Ok(frame.buffer.clone())
+    }
+
+    fn copy_current_page(&mut self) {
+        match self.copy_current_page_image() {
+            Ok(()) => self.set_status("Copied current page image to clipboard"),
+            Err(_) => match self.copy_current_page_text() {
+                Ok(()) => self.set_status("Image export failed, copied text summary instead"),
+                Err(err) => self.set_status(format!("Copy failed: {err}")),
+            },
+        }
+    }
+
+    fn current_page_summary(&self) -> String {
+        match self.page {
             Page::Overview => format!(
                 "oc-stats {}\nTokens: {}\nCost: {}\nSessions: {}\nInteractions: {}",
                 self.range.label(),
@@ -319,12 +338,27 @@ impl App {
                 })
                 .collect::<Vec<_>>()
                 .join("\n"),
-        };
-
-        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(summary)) {
-            Ok(()) => self.set_status("Copied current page summary to clipboard"),
-            Err(err) => self.set_status(format!("Clipboard unavailable: {err}")),
         }
+    }
+
+    fn copy_current_page_text(&self) -> Result<()> {
+        let summary = self.current_page_summary();
+        let mut clipboard = arboard::Clipboard::new()?;
+        clipboard.set_text(summary)?;
+        Ok(())
+    }
+
+    fn copy_current_page_image(&self) -> Result<()> {
+        let theme = Theme::from_mode(self.theme_mode);
+        let buffer = self.capture_current_page_buffer()?;
+        let image = render_share_card(&buffer, &theme)?;
+        let mut clipboard = arboard::Clipboard::new()?;
+        clipboard.set_image(arboard::ImageData {
+            width: image.width() as usize,
+            height: image.height() as usize,
+            bytes: Cow::Owned(image.into_raw()),
+        })?;
+        Ok(())
     }
 }
 
