@@ -8,8 +8,8 @@ use rusqlite::OptionalExtension;
 
 use crate::db::connection::{discover_database_path, open_database};
 use crate::db::models::{
-    AppData, DataSourceKind, InputOptions, JsonMessageRecord, SessionSummary, TokenUsage,
-    UsageEvent,
+    AppData, DataSourceKind, InputOptions, JsonMessageRecord, MessageRecord, SessionRecord,
+    SessionSummary, TokenUsage, UsageEvent,
 };
 use crate::utils::time::timestamp_ms_to_local;
 
@@ -21,6 +21,7 @@ struct SessionRow {
     project_worktree: Option<PathBuf>,
     title: Option<String>,
     time_created: Option<DateTime<Local>>,
+    time_updated: Option<DateTime<Local>>,
     time_archived: Option<DateTime<Local>>,
 }
 
@@ -46,7 +47,7 @@ pub fn load_from_sqlite(db_path: &Path) -> Result<AppData> {
 
     let mut session_stmt = conn.prepare(
         "
-        SELECT s.id, s.parent_id, s.title, s.time_created, s.time_archived,
+        SELECT s.id, s.parent_id, s.title, s.time_created, s.time_updated, s.time_archived,
                p.name as project_name, p.worktree as project_worktree
         FROM session s
         LEFT JOIN project p ON s.project_id = p.id
@@ -66,6 +67,9 @@ pub fn load_from_sqlite(db_path: &Path) -> Result<AppData> {
             time_created: row
                 .get::<_, Option<i64>>("time_created")?
                 .and_then(timestamp_ms_to_local),
+            time_updated: row
+                .get::<_, Option<i64>>("time_updated")?
+                .and_then(timestamp_ms_to_local),
             time_archived: row
                 .get::<_, Option<i64>>("time_archived")?
                 .and_then(timestamp_ms_to_local),
@@ -73,34 +77,57 @@ pub fn load_from_sqlite(db_path: &Path) -> Result<AppData> {
     })?;
 
     let mut all_events = Vec::new();
+    let mut all_messages = Vec::new();
+    let mut session_records = Vec::new();
     for session in sessions_iter {
         let session = session?;
-        let events = load_session_events_sqlite(&conn, &session)?;
+        let messages = load_session_messages_sqlite(&conn, &session)?;
+        let events = messages
+            .iter()
+            .filter_map(|message| message.event.clone())
+            .collect::<Vec<_>>();
+        all_messages.extend(messages.into_iter().map(|message| message.record));
         all_events.extend(events);
+        if let (Some(created_at), Some(updated_at)) = (session.time_created, session.time_updated) {
+            session_records.push(SessionRecord {
+                session_id: session.id.clone(),
+                created_at,
+                updated_at,
+            });
+        }
     }
 
-    finalize_app_data(all_events, DataSourceKind::Sqlite)
+    finalize_app_data(
+        all_events,
+        all_messages,
+        session_records,
+        DataSourceKind::Sqlite,
+    )
 }
 
-fn load_session_events_sqlite(
+struct ParsedMessage {
+    record: MessageRecord,
+    event: Option<UsageEvent>,
+}
+
+fn load_session_messages_sqlite(
     conn: &rusqlite::Connection,
     session: &SessionRow,
-) -> Result<Vec<UsageEvent>> {
+) -> Result<Vec<ParsedMessage>> {
     let mut stmt =
         conn.prepare("SELECT data FROM message WHERE session_id = ? ORDER BY time_created ASC")?;
 
     let rows = stmt.query_map([&session.id], |row| row.get::<_, String>(0))?;
-    let mut events = Vec::new();
+    let mut messages = Vec::new();
     for row in rows {
         let payload = row?;
-        let Some(event) = parse_message_payload(&payload, session, DataSourceKind::Sqlite)? else {
+        let Some(message) = parse_message_payload(&payload, session, DataSourceKind::Sqlite)?
+        else {
             continue;
         };
-        if event.tokens.total() > 0 {
-            events.push(event);
-        }
+        messages.push(message);
     }
-    Ok(events)
+    Ok(messages)
 }
 
 pub fn load_from_json(path: &Path) -> Result<AppData> {
@@ -155,15 +182,12 @@ fn collect_json_files(path: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
 
 fn load_from_json_values(values: Vec<serde_json::Value>, source_path: &Path) -> Result<AppData> {
     let mut all_events = Vec::new();
+    let mut all_messages = Vec::new();
     for value in values {
         let record: JsonMessageRecord = match serde_json::from_value(value) {
             Ok(record) => record,
             Err(_) => continue,
         };
-
-        if record.role.as_deref() != Some("assistant") {
-            continue;
-        }
 
         let session_id = source_path
             .file_stem()
@@ -191,6 +215,7 @@ fn load_from_json_values(values: Vec<serde_json::Value>, source_path: &Path) -> 
             project_worktree: None,
             title: None,
             time_created: None,
+            time_updated: None,
             time_archived: None,
         };
 
@@ -199,21 +224,22 @@ fn load_from_json_values(values: Vec<serde_json::Value>, source_path: &Path) -> 
             ..session_row
         };
 
-        if let Some(event) = parse_json_record(record, &session_row, DataSourceKind::Json)
-            && event.tokens.total() > 0
-        {
-            all_events.push(event);
+        if let Some(message) = parse_json_record(record, &session_row, DataSourceKind::Json) {
+            if let Some(event) = message.event {
+                all_events.push(event);
+            }
+            all_messages.push(message.record);
         }
     }
 
-    finalize_app_data(all_events, DataSourceKind::Json)
+    finalize_app_data(all_events, all_messages, Vec::new(), DataSourceKind::Json)
 }
 
 fn parse_message_payload(
     payload: &str,
     session: &SessionRow,
     source: DataSourceKind,
-) -> Result<Option<UsageEvent>> {
+) -> Result<Option<ParsedMessage>> {
     let record: JsonMessageRecord = match serde_json::from_str(payload) {
         Ok(record) => record,
         Err(_) => return Ok(None),
@@ -226,10 +252,45 @@ fn parse_json_record(
     record: JsonMessageRecord,
     session: &SessionRow,
     source: DataSourceKind,
-) -> Option<UsageEvent> {
-    if record.role.as_deref() != Some("assistant") {
-        return None;
+) -> Option<ParsedMessage> {
+    let role = normalize_optional_text(record.role.clone());
+    let provider_id = normalize_optional_text(record.provider_id.clone()).or_else(|| {
+        record
+            .model
+            .as_ref()
+            .and_then(|model| normalize_optional_text(model.provider_id.clone()))
+    });
+    let model_id = normalize_optional_text(record.model_id.clone()).or_else(|| {
+        record
+            .model
+            .as_ref()
+            .and_then(|model| normalize_optional_text(model.model_id.clone()))
+    });
+    let created_at = record
+        .time
+        .as_ref()
+        .and_then(|time| time.created)
+        .and_then(timestamp_ms_to_local);
+
+    let message = MessageRecord {
+        session_id: session.id.clone(),
+        role: role.clone(),
+        provider_id: provider_id.clone(),
+        model_id: model_id.clone(),
+        created_at,
+        source,
+    };
+
+    if role.as_deref() != Some("assistant") {
+        return Some(ParsedMessage {
+            record: message,
+            event: None,
+        });
     }
+
+    let Some(model_id) = model_id else {
+        return None;
+    };
 
     let tokens = TokenUsage {
         input: record
@@ -256,29 +317,13 @@ fn parse_json_record(
             .unwrap_or(0),
     };
 
-    let provider_id = record.provider_id.clone().or_else(|| {
-        record
-            .model
-            .as_ref()
-            .and_then(|model| model.provider_id.clone())
-    });
-    let model_id = record
-        .model_id
-        .or_else(|| record.model.and_then(|model| model.model_id))
-        .unwrap_or_else(|| "unknown".to_string());
-
-    let created_at = record
-        .time
-        .as_ref()
-        .and_then(|time| time.created)
-        .and_then(timestamp_ms_to_local);
     let completed_at = record
         .time
         .as_ref()
         .and_then(|time| time.completed)
         .and_then(timestamp_ms_to_local);
 
-    Some(UsageEvent {
+    let event = UsageEvent {
         session_id: session.id.clone(),
         parent_session_id: session.parent_id.clone(),
         session_title: session.title.clone(),
@@ -297,14 +342,29 @@ fn parse_json_record(
         tokens,
         created_at,
         completed_at,
-        stored_cost_usd: record
-            .cost
-            .filter(|value| *value > rust_decimal::Decimal::ZERO),
+        stored_cost_usd: record.cost,
         source,
+    };
+
+    Some(ParsedMessage {
+        record: message,
+        event: (event.tokens.total() > 0).then_some(event),
     })
 }
 
-fn finalize_app_data(events: Vec<UsageEvent>, source: DataSourceKind) -> Result<AppData> {
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
+}
+
+fn finalize_app_data(
+    events: Vec<UsageEvent>,
+    messages: Vec<MessageRecord>,
+    session_records: Vec<SessionRecord>,
+    source: DataSourceKind,
+) -> Result<AppData> {
     let mut grouped: BTreeMap<String, Vec<UsageEvent>> = BTreeMap::new();
     for event in events {
         grouped
@@ -329,6 +389,8 @@ fn finalize_app_data(events: Vec<UsageEvent>, source: DataSourceKind) -> Result<
 
     Ok(AppData {
         events: flattened,
+        messages,
+        session_records,
         sessions,
         source,
     })
@@ -518,10 +580,12 @@ mod tests {
             project_worktree: None,
             title: None,
             time_created: None,
+            time_updated: None,
             time_archived: None,
         };
 
-        let event = parse_json_record(record, &session, DataSourceKind::Json).unwrap();
+        let parsed = parse_json_record(record, &session, DataSourceKind::Json).unwrap();
+        let event = parsed.event.unwrap();
         assert_eq!(event.tokens.total(), 33);
         assert_eq!(event.model_id, "claude-sonnet-4.5");
         assert_eq!(event.provider_id.as_deref(), Some("anthropic"));

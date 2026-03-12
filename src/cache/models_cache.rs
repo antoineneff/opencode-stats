@@ -80,9 +80,7 @@ impl PricingCatalog {
     }
 
     pub fn cost_for_event(&self, event: &UsageEvent) -> Decimal {
-        if let Some(cost) = event.stored_cost_usd
-            && cost > Decimal::ZERO
-        {
+        if let Some(cost) = event.stored_cost_usd {
             return cost;
         }
 

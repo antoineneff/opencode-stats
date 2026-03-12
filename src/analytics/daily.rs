@@ -2,7 +2,6 @@ use crate::cache::models_cache::PricingCatalog;
 use crate::db::models::{TokenUsage, UsageEvent};
 use crate::utils::pricing::PriceSummary;
 use chrono::NaiveDate;
-use rust_decimal::Decimal;
 
 #[derive(Clone, Debug)]
 pub struct DailyUsage {
@@ -33,9 +32,7 @@ pub fn aggregate_daily(
         });
         entry.tokens.add_assign(&event.tokens);
         entry.interactions += 1;
-        if let Some(cost) = event.stored_cost_usd
-            && cost > Decimal::ZERO
-        {
+        if let Some(cost) = event.stored_cost_usd {
             entry.cost.add_known(cost);
             continue;
         }

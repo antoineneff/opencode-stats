@@ -15,7 +15,7 @@ pub fn render_overview(
     _range: crate::utils::time::TimeRange,
     theme: &Theme,
 ) {
-    let [heatmap, legend, spacer, favorite, stats, fun] = Layout::default()
+    let [heatmap, legend, spacer, favorite, stats, _, fun] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(8),
@@ -23,7 +23,8 @@ pub fn render_overview(
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(5),
-            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(1),
         ])
         .areas(area);
 
@@ -80,6 +81,11 @@ pub fn render_overview(
             format_tokens(snapshot.overview.cache_tokens),
             theme,
         ),
+        metric_line(
+            "Models used: ",
+            snapshot.overview.models_used.to_string(),
+            theme,
+        ),
     ]);
     frame.render_widget(Paragraph::new(left_text), left);
 
@@ -89,16 +95,9 @@ pub fn render_overview(
             format_price_summary(&snapshot.overview.total_cost),
             theme,
         ),
-        metric_line(
-            "Interactions: ",
-            snapshot.overview.interactions.to_string(),
-            theme,
-        ),
-        metric_line(
-            "Models used: ",
-            snapshot.overview.models_used.to_string(),
-            theme,
-        ),
+        metric_line("Sessions: ", snapshot.overview.sessions.to_string(), theme),
+        metric_line("Messages: ", snapshot.overview.messages.to_string(), theme),
+        metric_line("Prompts: ", snapshot.overview.prompts.to_string(), theme),
         metric_line(
             "Active days: ",
             snapshot.overview.active_days.to_string(),
@@ -107,18 +106,18 @@ pub fn render_overview(
     ]);
     frame.render_widget(Paragraph::new(right_text), right);
 
-    let comparison = split_comparison_lines(&snapshot.overview.fun_comparison)
-        .into_iter()
-        .map(|line| Line::from(Span::styled(line, theme.comparison_style())))
-        .collect::<Vec<_>>();
-    let fun_text = Paragraph::new(Text::from(comparison));
-    frame.render_widget(fun_text, fun);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            compact_fun_comparison(&snapshot.overview.fun_comparison),
+            theme.comparison_style(),
+        ))),
+        fun,
+    );
 }
 
-fn split_comparison_lines(text: &str) -> Vec<String> {
-    if let Some((left, right)) = text.split_once(", ") {
-        vec![format!("{left},"), format!("{}{right}", " ".repeat(12))]
-    } else {
-        vec![text.to_string()]
-    }
+fn compact_fun_comparison(text: &str) -> String {
+    text.replace("That is ", "Roughly ")
+        .replace(" of text", "")
+        .replace(", or about ", ", or ")
+        .replace(" of nonstop reading", " of nonstop reading")
 }

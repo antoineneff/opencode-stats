@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::NaiveDate;
 
 use crate::cache::models_cache::PricingCatalog;
-use crate::db::models::{TokenUsage, UsageEvent};
+use crate::db::models::{MessageRecord, TokenUsage, UsageEvent};
 use crate::utils::formatting::percentage;
 use crate::utils::pricing::PriceSummary;
 use crate::utils::time::TimeRange;
@@ -12,7 +12,10 @@ use crate::utils::time::TimeRange;
 pub struct ModelUsageRow {
     pub model_id: String,
     pub total_tokens: u64,
-    pub interactions: usize,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub messages: usize,
+    pub prompts: usize,
     pub sessions: usize,
     pub active_days: usize,
     pub cost: PriceSummary,
@@ -24,7 +27,10 @@ pub struct ModelUsageRow {
 pub struct ProviderUsageRow {
     pub provider_id: String,
     pub total_tokens: u64,
-    pub interactions: usize,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub messages: usize,
+    pub prompts: usize,
     pub sessions: usize,
     pub active_days: usize,
     pub cost: PriceSummary,
@@ -50,17 +56,30 @@ pub struct ModelChartData {
 
 pub fn build_model_chart(
     events: &[UsageEvent],
+    messages: &[MessageRecord],
     pricing: &PricingCatalog,
     _range: TimeRange,
     today: NaiveDate,
 ) -> (Vec<ModelUsageRow>, ModelChartData) {
     let mut model_rows = BTreeMap::<String, UsageAccumulator>::new();
 
+    for message in messages {
+        let Some(model) = message.model_id.clone() else {
+            continue;
+        };
+        let entry = model_rows.entry(model).or_default();
+        if message.role.as_deref() == Some("assistant") {
+            entry.messages += 1;
+        }
+        if message.role.as_deref() == Some("user") {
+            entry.prompts += 1;
+        }
+    }
+
     for event in events {
         let model = event.model_id.clone();
         let entry = model_rows.entry(model).or_default();
         entry.tokens.add_assign(&event.tokens);
-        entry.interactions += 1;
         entry.sessions.insert(event.session_id.clone());
         update_cost(&mut entry.cost, pricing, event);
         if let Some(date) = event.activity_date() {
@@ -84,8 +103,11 @@ pub fn build_model_chart(
         .map(|(model_id, row)| ModelUsageRow {
             model_id,
             total_tokens: row.tokens.total(),
+            input_tokens: row.tokens.input,
+            output_tokens: row.tokens.output,
             percentage: percentage(row.tokens.total(), overall_tokens),
-            interactions: row.interactions,
+            messages: row.messages,
+            prompts: row.prompts,
             sessions: row.sessions.len(),
             active_days: row.active_days.len(),
             cost: row.cost,
@@ -105,11 +127,26 @@ pub fn build_model_chart(
 
 pub fn build_provider_chart(
     events: &[UsageEvent],
+    messages: &[MessageRecord],
     pricing: &PricingCatalog,
     _range: TimeRange,
     today: NaiveDate,
 ) -> (Vec<ProviderUsageRow>, ModelChartData) {
     let mut provider_rows = BTreeMap::<String, UsageAccumulator>::new();
+
+    for message in messages {
+        let provider = message
+            .provider_id
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let entry = provider_rows.entry(provider).or_default();
+        if message.role.as_deref() == Some("assistant") {
+            entry.messages += 1;
+        }
+        if message.role.as_deref() == Some("user") {
+            entry.prompts += 1;
+        }
+    }
 
     for event in events {
         let provider = event
@@ -118,7 +155,6 @@ pub fn build_provider_chart(
             .unwrap_or_else(|| "unknown".to_string());
         let entry = provider_rows.entry(provider).or_default();
         entry.tokens.add_assign(&event.tokens);
-        entry.interactions += 1;
         entry.sessions.insert(event.session_id.clone());
         update_cost(&mut entry.cost, pricing, event);
         if let Some(date) = event.activity_date() {
@@ -142,8 +178,11 @@ pub fn build_provider_chart(
         .map(|(provider_id, row)| ProviderUsageRow {
             provider_id,
             total_tokens: row.tokens.total(),
+            input_tokens: row.tokens.input,
+            output_tokens: row.tokens.output,
             percentage: percentage(row.tokens.total(), overall_tokens),
-            interactions: row.interactions,
+            messages: row.messages,
+            prompts: row.prompts,
             sessions: row.sessions.len(),
             active_days: row.active_days.len(),
             cost: row.cost,
@@ -328,7 +367,8 @@ fn format_tick_label(value: f64) -> String {
 #[derive(Default)]
 struct UsageAccumulator {
     tokens: TokenUsage,
-    interactions: usize,
+    messages: usize,
+    prompts: usize,
     sessions: BTreeSet<String>,
     active_days: BTreeSet<NaiveDate>,
     cost: PriceSummary,
@@ -337,9 +377,7 @@ struct UsageAccumulator {
 }
 
 fn update_cost(summary: &mut PriceSummary, pricing: &PricingCatalog, event: &UsageEvent) {
-    if let Some(cost) = event.stored_cost_usd
-        && cost > rust_decimal::Decimal::ZERO
-    {
+    if let Some(cost) = event.stored_cost_usd {
         summary.add_known(cost);
         return;
     }

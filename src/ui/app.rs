@@ -125,8 +125,8 @@ impl App {
     /// 默认的 ratatui::restore 在 Inline Viewport 下有错误的行为，
     /// 此处重置终端以确保光标和输入状态正确恢复
     fn restore(terminal: &mut DefaultTerminal) {
-        terminal.clear().unwrap();
-        crossterm::terminal::disable_raw_mode().unwrap();
+        terminal.clear().expect("Failed to clear terminal.");
+        crossterm::terminal::disable_raw_mode().expect("Failed to disable raw mode.");
         print_exit_art();
     }
 
@@ -361,12 +361,13 @@ impl App {
     fn current_page_summary(&self) -> String {
         match self.page {
             Page::Overview => format!(
-                "oc-stats {}\nTokens: {}\nCost: {}\nSessions: {}\nInteractions: {}",
+                "oc-stats {}\nTokens: {}\nCost: {}\nSessions: {}\nMessages: {}\nPrompts: {}",
                 self.range.label(),
                 self.snapshot.overview.total_tokens,
                 format_price_summary(&self.snapshot.overview.total_cost),
                 self.snapshot.overview.sessions,
-                self.snapshot.overview.interactions,
+                self.snapshot.overview.messages,
+                self.snapshot.overview.prompts,
             ),
             Page::Models => self
                 .snapshot

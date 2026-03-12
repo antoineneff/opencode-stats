@@ -16,7 +16,7 @@ use crate::analytics::model_stats::{
 use crate::analytics::monthly::aggregate_monthly;
 use crate::analytics::weekly::aggregate_weekly;
 use crate::cache::models_cache::PricingCatalog;
-use crate::db::models::{AppData, UsageEvent};
+use crate::db::models::{AppData, MessageRecord, UsageEvent};
 use crate::utils::pricing::PriceSummary;
 use crate::utils::time::{TimeRange, current_local_date};
 
@@ -28,7 +28,8 @@ pub struct OverviewStats {
     pub cache_tokens: u64,
     pub total_cost: PriceSummary,
     pub sessions: usize,
-    pub interactions: usize,
+    pub messages: usize,
+    pub prompts: usize,
     pub models_used: usize,
     pub active_days: usize,
     pub fun_comparison: String,
@@ -51,11 +52,24 @@ pub fn build_snapshot(
 ) -> AnalyticsSnapshot {
     let today = current_local_date();
     let filtered_events = filter_events(&data.events, range, today);
+    let filtered_model_messages = filter_model_messages(&data.messages, range, today);
     let daily = aggregate_daily(&filtered_events, pricing, today);
     let weekly = aggregate_weekly(&daily, 0);
     let _monthly = aggregate_monthly(&weekly);
-    let (models, chart) = build_model_chart(&filtered_events, pricing, range, today);
-    let (providers, provider_chart) = build_provider_chart(&filtered_events, pricing, range, today);
+    let (models, chart) = build_model_chart(
+        &filtered_events,
+        &filtered_model_messages,
+        pricing,
+        range,
+        today,
+    );
+    let (providers, provider_chart) = build_provider_chart(
+        &filtered_events,
+        &filtered_model_messages,
+        pricing,
+        range,
+        today,
+    );
     let heatmap = build_heatmap_data(&data.events, today);
 
     let total_tokens = filtered_events
@@ -76,9 +90,7 @@ pub fn build_snapshot(
         .sum::<u64>();
     let mut total_cost = PriceSummary::default();
     for event in &filtered_events {
-        if let Some(cost) = event.stored_cost_usd
-            && cost > rust_decimal::Decimal::ZERO
-        {
+        if let Some(cost) = event.stored_cost_usd {
             total_cost.add_known(cost);
             continue;
         }
@@ -89,12 +101,24 @@ pub fn build_snapshot(
             total_cost.add_missing();
         }
     }
-    let sessions = filtered_events
+    let filtered_sessions = filter_sessions(data, range, today);
+    let session_ids = filtered_sessions
         .iter()
-        .map(|event| event.session_id.clone())
-        .collect::<BTreeSet<_>>()
-        .len();
-    let interactions = filtered_events.len();
+        .map(|session| session.session_id.clone())
+        .collect::<BTreeSet<_>>();
+    let messages = data
+        .messages
+        .iter()
+        .filter(|message| session_ids.contains(&message.session_id))
+        .count();
+    let prompts = data
+        .messages
+        .iter()
+        .filter(|message| {
+            session_ids.contains(&message.session_id) && message.role.as_deref() == Some("user")
+        })
+        .count();
+    let sessions = filtered_sessions.len();
     let models_used = filtered_events
         .iter()
         .map(|event| event.model_id.clone())
@@ -110,7 +134,8 @@ pub fn build_snapshot(
             cache_tokens,
             total_cost,
             sessions,
-            interactions,
+            messages,
+            prompts,
             models_used,
             active_days,
             fun_comparison: crate::utils::formatting::tokens_comparison_text(total_tokens),
@@ -130,6 +155,37 @@ fn filter_events(events: &[UsageEvent], range: TimeRange, today: NaiveDate) -> V
             event
                 .activity_date()
                 .is_some_and(|date| crate::utils::time::in_range(date, range, today))
+        })
+        .cloned()
+        .collect()
+}
+
+fn filter_model_messages(
+    messages: &[MessageRecord],
+    range: TimeRange,
+    today: NaiveDate,
+) -> Vec<MessageRecord> {
+    messages
+        .iter()
+        .filter(|message| {
+            message.model_id.is_some()
+                && message
+                    .activity_date()
+                    .is_some_and(|date| crate::utils::time::in_range(date, range, today))
+        })
+        .cloned()
+        .collect()
+}
+
+fn filter_sessions(
+    data: &AppData,
+    range: TimeRange,
+    today: NaiveDate,
+) -> Vec<crate::db::models::SessionRecord> {
+    data.session_records
+        .iter()
+        .filter(|session| {
+            crate::utils::time::in_range(session.updated_at.date_naive(), range, today)
         })
         .cloned()
         .collect()

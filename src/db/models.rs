@@ -46,6 +46,16 @@ pub struct UsageEvent {
     pub source: DataSourceKind,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MessageRecord {
+    pub session_id: String,
+    pub role: Option<String>,
+    pub provider_id: Option<String>,
+    pub model_id: Option<String>,
+    pub created_at: Option<DateTime<Local>>,
+    pub source: DataSourceKind,
+}
+
 impl UsageEvent {
     pub fn pricing_model_id(&self) -> Option<String> {
         self.provider_id
@@ -83,6 +93,12 @@ impl UsageEvent {
     }
 }
 
+impl MessageRecord {
+    pub fn activity_date(&self) -> Option<NaiveDate> {
+        self.created_at.as_ref().map(DateTime::date_naive)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum DataSourceKind {
     #[default]
@@ -98,6 +114,13 @@ pub struct SessionSummary {
     pub project_name: String,
     pub project_path: Option<PathBuf>,
     pub events: Vec<UsageEvent>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionRecord {
+    pub session_id: String,
+    pub created_at: DateTime<Local>,
+    pub updated_at: DateTime<Local>,
 }
 
 impl SessionSummary {
@@ -183,6 +206,8 @@ impl SessionSummary {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppData {
     pub events: Vec<UsageEvent>,
+    pub messages: Vec<MessageRecord>,
+    pub session_records: Vec<SessionRecord>,
     pub sessions: Vec<SessionSummary>,
     pub source: DataSourceKind,
 }
