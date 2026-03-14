@@ -1,5 +1,6 @@
+<h1 align="center">OpenCode Stats</h1>
+
 <p align="center">
-  <h1 align="center">OpenCode Stats</h1><br>
   <a href="https://ratatui.rs/"><img src="https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff" alt="Built With Ratatui"></a>
 </p>
 
