@@ -1,8 +1,16 @@
-# OpenCode Stats
+<p align="center">
+  <h1 align="center">OpenCode Stats</h1><br>
+  <a href="https://ratatui.rs/"><img src="https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff" alt="Built With Ratatui"></a>
+</p>
+
+<p align="center">
+  <a href="./README.md">English</a> | 
+  <a href="./README_CN.md">中文</a>
+</p>
 
 一个面向 OpenCode 使用数据的终端统计面板。
 
-![screenshot](images/overview.png)
+<img src="images/overview.png" alt="screenshot" style="zoom:50%;" />
 
 `oc-stats` 会读取 OpenCode 本地 SQLite 数据库或 JSON 导出文件，在终端中展示 token 使用量、成本估算、模型与提供商分布，以及最近 365 天的活跃热力图。它参考了 Claude Code `/stats` 的使用体验，但以本地可运行、可导出、可分享为目标做了独立实现。
 
@@ -23,18 +31,15 @@
 
 ## 预览
 
-OpenCode Stats 提供了三种数据预览视角，分别是
+OpenCode Stats 提供了三种数据预览视角：
 
-- 年视图下的热力图和数据总览
-  ![screenshot](images/overview.png)
-- 不同时间视图下的分模型使用情况
-  ![model uses](images/models.png)
-- 不同时间视图下的分供应商使用情况
-  ![provider uses](images/providers.png)
+| 年视图                                                        | 模型使用                                                    | 提供商使用                                                        |
+| ------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| <img src="images/overview.png" alt="screenshot" width="300"/> | <img src="images/models.png" alt="model uses" width="300"/> | <img src="images/providers.png" alt="provider uses" width="300"/> |
 
-同时，每个页面都支持以透明底的卡片风格直接渲染到剪贴板，比如
+同时，每个页面都支持以透明底的卡片风格直接渲染到剪贴板，比如：
 
-![card](images/card.png)
+<img src="images/card.png" alt="card" style="zoom:50%;" />
 
 ## 安装
 

@@ -1,8 +1,16 @@
-# OpenCode Stats
+<p align="center">
+  <h1 align="center">OpenCode Stats</h1><br>
+  <a href="https://ratatui.rs/"><img src="https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff" alt="Built With Ratatui"></a>
+</p>
+
+<p align="center">
+  <a href="./README.md">English</a> | 
+  <a href="./README_CN.md">中文</a>
+</p>
 
 A terminal dashboard for OpenCode usage statistics.
 
-![screenshot](images/overview.png)
+<img src="images/overview.png" alt="screenshot" style="zoom:50%;" />
 
 `oc-stats` reads your local OpenCode SQLite database or JSON export files and displays token usage, cost estimates, model and provider distributions, and a 365-day activity heatmap directly in your terminal. Inspired by Claude Code's `/stats` command, this is an independent implementation focused on local execution, export, and shareability.
 
@@ -25,16 +33,13 @@ A terminal dashboard for OpenCode usage statistics.
 
 OpenCode Stats provides three data perspectives:
 
-- **Year view** with heatmap and data overview
-  ![screenshot](images/overview.png)
-- **Model usage** across different time ranges
-  ![model uses](images/models.png)
-- **Provider usage** across different time ranges
-  ![provider uses](images/providers.png)
+| Year view                                                     | Model usage                                                 | Provider usage                                                    |
+| ------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| <img src="images/overview.png" alt="screenshot" width="300"/> | <img src="images/models.png" alt="model uses" width="300"/> | <img src="images/providers.png" alt="provider uses" width="300"/> |
 
 Each page also supports exporting a transparent-background share card directly to clipboard:
 
-![card](images/card.png)
+<img src="images/card.png" alt="card" style="zoom:50%;" />
 
 ## Installation
 
