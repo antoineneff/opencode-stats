@@ -71,19 +71,13 @@ jobs:
 
   build-macos:
     name: Build macOS (${{ matrix.target }})
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: x86_64-apple-darwin
-            runner: macos-latest-large
-            artifact_name: oc-stats-x86_64-apple-darwin
-            archive_name: oc-stats-x86_64-apple-darwin.tar.gz
-          - target: aarch64-apple-darwin
-            runner: macos-latest
-            artifact_name: oc-stats-aarch64-apple-darwin
-            archive_name: oc-stats-aarch64-apple-darwin.tar.gz
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
         with:
@@ -100,12 +94,12 @@ jobs:
         run: |
           mkdir -p dist
           cp "target/${{ matrix.target }}/release/${BIN_NAME}" "dist/${BIN_NAME}"
-          tar -C dist -czf "dist/${{ matrix.archive_name }}" "${BIN_NAME}"
+          tar -C dist -czf "dist/oc-stats-${{ matrix.target }}.tar.gz" "${BIN_NAME}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.archive_name }}
+          name: oc-stats-${{ matrix.target }}
+          path: dist/oc-stats-${{ matrix.target }}.tar.gz
           if-no-files-found: error
 
   build-windows:
