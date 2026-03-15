@@ -164,29 +164,69 @@ jobs:
       (needs.publish-crates.result == 'success' || needs.publish-crates.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          echo "current=${current_tag}" >> "$GITHUB_OUTPUT"
+
+          previous_tag="$(git tag --sort=-version:refname | grep -Fxv "${current_tag}" | head -n 1 || true)"
+          echo "previous=${previous_tag}" >> "$GITHUB_OUTPUT"
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: Generate release notes intro
-        shell: bash
-        run: |
-          cat <<EOF > release-notes.md
-          ## Install
+      - name: Generate release notes from history
+        uses: actions/github-script@v7
+        env:
+          CURRENT_TAG: ${{ steps.tags.outputs.current }}
+          PREVIOUS_TAG: ${{ steps.tags.outputs.previous }}
+          BIN_NAME: ${{ env.BIN_NAME }}
+          PACKAGE_NAME: ${{ env.PACKAGE_NAME }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const currentTag = process.env.CURRENT_TAG;
+            const previousTag = process.env.PREVIOUS_TAG;
 
-          - From crates.io: `cargo install ${PACKAGE_NAME}`
-          - Installed command: `${BIN_NAME}`
-          - From GitHub: download the archive for your platform from the assets below
-          EOF
+            const params = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: currentTag,
+              target_commitish: context.sha,
+            };
+
+            if (previousTag) {
+              params.previous_tag_name = previousTag;
+            }
+
+            const { data } = await github.rest.repos.generateReleaseNotes(params);
+
+            const intro = [
+              '## Install',
+              '',
+              `- From crates.io: \`cargo install ${process.env.PACKAGE_NAME}\``,
+              `- Installed command: \`${process.env.BIN_NAME}\``,
+              '- From GitHub: download the archive for your platform from the assets below',
+              '',
+            ].join('\n');
+
+            fs.writeFileSync('release-notes.md', `${intro}${data.body}\n`, 'utf8');
 
       - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          tag_name: ${{ steps.tags.outputs.current }}
+          name: ${{ steps.tags.outputs.current }}
           body_path: release-notes.md
-          generate_release_notes: true
           files: dist/*
           fail_on_unmatched_files: true
