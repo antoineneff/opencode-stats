@@ -113,6 +113,7 @@ oc-stats --json /path/to/export.json
 ### 指定主题
 
 ```bash
+oc-stats --theme auto
 oc-stats --theme dark
 oc-stats --theme light
 ```
@@ -179,7 +180,7 @@ oc-stats cache clean
 
 模型价格信息会优先从本地缓存读取，并在需要时从远程源刷新：
 
-- 本地缓存路径：`~/.config/oc-stats/models.json`
+- 本地缓存路径：`~/.cache/oc-stats/models.json`
 - 远程来源：`https://models.dev/api.json`
 - 缓存有效期：1 小时
 

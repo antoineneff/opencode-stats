@@ -22,6 +22,10 @@ cargo run            # Run the app
 ```plaintext
 src/
 ├── main.rs              # Entry point, CLI args
+├── config/
+│   ├── mod.rs
+│   ├── app_config.rs    # ~/.config/oc-stats/config.toml loader
+│   └── theme_config.rs  # Theme catalog from themes.toml and themes/*.toml
 ├── db/
 │   ├── mod.rs
 │   ├── connection.rs    # SQLite connection handling
@@ -82,12 +86,20 @@ src/
 
 ### Pricing
 
-- Local cache: `~/.config/oc-stats/models.json`
+- Local cache: `~/.cache/oc-stats/models.json`
 - Remote source: `https://models.dev/api.json`
 - Cache TTL: 1 hour
 - User overrides in OpenCode config take priority
 - Fallback: `cacheWrite = input`, `cacheRead = input * 0.1`
 - Prefer stored cost from database when available
+
+### Theme Configuration
+
+- App config file: `~/.config/oc-stats/config.toml`
+- Theme index: `~/.config/oc-stats/themes.toml`
+- Theme overrides dir: `~/.config/oc-stats/themes/*.toml`
+- `themes/*.toml` overrides same-name entries from `themes.toml`
+- If no config/theme files exist, built-in dark/light themes are used
 
 ### UI
 

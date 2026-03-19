@@ -1,3 +1,4 @@
+use ratatui::layout::Alignment;
 use ratatui::symbols;
 use ratatui::text::Line;
 use ratatui::widgets::{Axis, Chart, Dataset, GraphType};
@@ -31,7 +32,7 @@ pub fn build_chart<'a>(chart: &'a ModelChartData, theme: &'a Theme) -> Chart<'a>
                 .map(|label| Line::from(label.clone()))
                 .collect::<Vec<_>>(),
         )
-        .labels_alignment(ratatui::layout::Alignment::Center);
+        .labels_alignment(Alignment::Center);
 
     let y_axis = Axis::default()
         .bounds(chart.y_bounds)
@@ -42,7 +43,8 @@ pub fn build_chart<'a>(chart: &'a ModelChartData, theme: &'a Theme) -> Chart<'a>
                 .iter()
                 .map(|label| Line::from(label.clone()))
                 .collect::<Vec<_>>(),
-        );
+        )
+        .labels_alignment(Alignment::Right);
 
     Chart::new(datasets)
         .legend_position(None)

@@ -153,10 +153,10 @@ pub fn price_tokens(tokens: &TokenUsage, pricing: &ModelPricing) -> Decimal {
 }
 
 pub fn default_cache_path() -> Result<PathBuf> {
-    let Some(config_dir) = dirs::config_dir() else {
-        anyhow::bail!("could not determine config directory");
+    let Some(cache_dir) = dirs::cache_dir() else {
+        anyhow::bail!("could not determine cache directory");
     };
-    Ok(config_dir.join("oc-stats").join("models.json"))
+    Ok(cache_dir.join("oc-stats").join("models.json"))
 }
 
 pub async fn refresh_remote_models(

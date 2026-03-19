@@ -113,6 +113,7 @@ oc-stats --json /path/to/export.json
 ### Specify theme
 
 ```bash
+oc-stats --theme auto
 oc-stats --theme dark
 oc-stats --theme light
 ```
@@ -179,7 +180,7 @@ Default database locations:
 
 Model pricing is read from local cache first and refreshed from remote when needed:
 
-- Local cache path: `~/.config/oc-stats/models.json`
+- Local cache path: `~/.cache/oc-stats/models.json`
 - Remote source: `https://models.dev/api.json`
 - Cache TTL: 1 hour
 

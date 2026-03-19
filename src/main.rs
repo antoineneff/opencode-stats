@@ -1,5 +1,6 @@
 mod analytics;
 mod cache;
+mod config;
 mod db;
 mod ui;
 mod utils;
@@ -10,10 +11,12 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 use crate::cache::models_cache::{PricingCatalog, default_cache_path, refresh_pricing_catalog};
+use crate::config::app_config::AppConfig;
+use crate::config::theme_config::ThemeCatalog;
 use crate::db::models::InputOptions;
 use crate::db::queries::load_app_data;
 use crate::ui::app::App;
-use crate::ui::theme::ThemeMode;
+use crate::ui::theme::{Theme, ThemeKind, ThemeMode};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,7 +32,8 @@ async fn main() -> Result<()> {
     .context("failed to load OpenCode usage data")?;
 
     let pricing = PricingCatalog::load().context("failed to load pricing catalog")?;
-    let app = App::new(data, pricing, cli.theme);
+    let theme = resolve_theme(cli.theme).context("failed to resolve theme")?;
+    let app = App::new(data, pricing, theme);
     app.run().await
 }
 
@@ -46,8 +50,8 @@ struct CliArgs {
     #[arg(long = "json", value_name = "PATH")]
     json_path: Option<PathBuf>,
 
-    #[arg(long = "theme", default_value = "dark")]
-    theme: ThemeMode,
+    #[arg(long = "theme")]
+    theme: Option<ThemeMode>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -117,6 +121,35 @@ fn finalize_cache_update(
             )))
         }
     }
+}
+
+fn resolve_theme(cli_theme: Option<ThemeMode>) -> Result<Theme> {
+    let app_config = AppConfig::load().context("failed to load config.toml")?;
+    let catalog = ThemeCatalog::load().context("failed to load theme catalog")?;
+
+    let mode = cli_theme.unwrap_or(app_config.theme.default);
+    let kind = mode.resolve();
+    let selected_name = match kind {
+        ThemeKind::Dark => app_config.theme.dark.as_str(),
+        ThemeKind::Light => app_config.theme.light.as_str(),
+    };
+
+    let selected = catalog.get(selected_name).with_context(|| {
+        format!(
+            "theme '{selected_name}' not found; available themes: {}",
+            catalog.names().join(", ")
+        )
+    })?;
+
+    if selected.kind != kind {
+        anyhow::bail!(
+            "theme '{selected_name}' has type {:?}, expected {:?}",
+            selected.kind,
+            kind
+        );
+    }
+
+    Ok(selected.theme.clone())
 }
 
 #[cfg(test)]

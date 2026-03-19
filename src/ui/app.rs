@@ -16,7 +16,7 @@ use crate::db::models::AppData;
 use crate::ui::export::render_share_card;
 use crate::ui::models::{render_models, render_providers};
 use crate::ui::overview::render_overview;
-use crate::ui::theme::{Theme, ThemeMode};
+use crate::ui::theme::Theme;
 use crate::ui::widgets::common::{CONTENT_WIDTH, left_aligned_content, segment_span};
 use crate::utils::formatting::format_price_summary;
 use crate::utils::time::TimeRange;
@@ -75,7 +75,7 @@ pub struct App {
     pub snapshot: AnalyticsSnapshot,
     pub page: Page,
     pub range: TimeRange,
-    pub theme_mode: ThemeMode,
+    pub theme: Theme,
     pub should_quit: bool,
     status_message: Option<StatusMessage>,
     pub focused_model_index: usize,
@@ -87,7 +87,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(data: AppData, pricing: PricingCatalog, theme_mode: ThemeMode) -> Self {
+    pub fn new(data: AppData, pricing: PricingCatalog, theme: Theme) -> Self {
         let snapshot = build_snapshot(&data, &pricing, TimeRange::All);
         let (sender, receiver) = mpsc::unbounded_channel();
         let (clipboard_sender, clipboard_updates) = mpsc::unbounded_channel();
@@ -102,7 +102,7 @@ impl App {
             snapshot,
             page: Page::Overview,
             range: TimeRange::All,
-            theme_mode,
+            theme,
             should_quit: false,
             status_message: None,
             focused_model_index: 0,
@@ -188,7 +188,7 @@ impl App {
     }
 
     fn render(&self, frame: &mut Frame<'_>) {
-        let theme = Theme::from_mode(self.theme_mode);
+        let theme = &self.theme;
         let area = frame.area();
         let vertical = Layout::vertical([
             Constraint::Length(1),
@@ -209,18 +209,18 @@ impl App {
             divider,
         );
 
-        self.render_header(frame, header, &theme);
+        self.render_header(frame, header, theme);
         frame.render_widget(ratatui::widgets::Paragraph::new(""), spacer);
 
         match self.page {
-            Page::Overview => render_overview(frame, body, &self.snapshot, self.range, &theme),
+            Page::Overview => render_overview(frame, body, &self.snapshot, self.range, theme),
             Page::Models => render_models(
                 frame,
                 body,
                 &self.snapshot,
                 self.range,
                 self.focused_model_index,
-                &theme,
+                theme,
             ),
             Page::Providers => render_providers(
                 frame,
@@ -228,11 +228,11 @@ impl App {
                 &self.snapshot,
                 self.range,
                 self.focused_provider_index,
-                &theme,
+                theme,
             ),
         }
 
-        self.render_footer(frame, footer, &theme);
+        self.render_footer(frame, footer, theme);
     }
 
     fn render_header(&self, frame: &mut Frame<'_>, area: ratatui::layout::Rect, theme: &Theme) {
@@ -375,7 +375,7 @@ impl App {
     fn prepare_clipboard_job(&self) -> Result<ClipboardJob> {
         Ok(ClipboardJob {
             buffer: self.capture_current_page_buffer()?,
-            theme: Theme::from_mode(self.theme_mode),
+            theme: self.theme.clone(),
             summary: self.current_page_summary(),
         })
     }
