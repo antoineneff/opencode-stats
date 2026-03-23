@@ -1,7 +1,7 @@
-use anyhow::{Context, Result};
 use serde::Deserialize;
 
 use crate::config;
+use crate::config::errors::{Error, Result};
 use crate::ui::theme::ThemeMode;
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -37,10 +37,8 @@ impl AppConfig {
             return Ok(Self::default());
         }
 
-        let contents = std::fs::read_to_string(&path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
-        let parsed = toml::from_str::<Self>(&contents)
-            .with_context(|| format!("failed to parse {}", path.display()))?;
+        let contents = std::fs::read_to_string(&path).map_err(|e| Error::config_read(&path, e))?;
+        let parsed = toml::from_str(&contents).map_err(|e| Error::config_parse(&path, e))?;
         Ok(parsed)
     }
 }

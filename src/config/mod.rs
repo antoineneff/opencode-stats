@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 pub mod app_config;
 pub mod theme_config;
+pub mod errors;
 
 pub fn config_root() -> Option<PathBuf> {
     dirs::config_dir().map(|path| path.join("oc-stats"))

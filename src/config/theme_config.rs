@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::path::Path;
 
-use anyhow::{Context, Result, anyhow, bail};
 use ratatui::style::Color;
 use serde::Deserialize;
 
+use super::errors::{Error, Result};
 use crate::config;
 use crate::ui::theme::{NamedTheme, Theme, ThemeKind, builtin_themes};
 
@@ -37,28 +37,26 @@ impl ThemeCatalog {
         if let Some(theme_dir) = config::themes_dir_path()
             && theme_dir.exists()
         {
-            let mut paths = std::fs::read_dir(&theme_dir)
-                .with_context(|| format!("failed to read {}", theme_dir.display()))?
-                .collect::<std::io::Result<Vec<_>>>()
-                .with_context(|| format!("failed to list {}", theme_dir.display()))?
-                .into_iter()
-                .map(|entry| entry.path())
-                .filter(|path| {
-                    path.is_file() && path.extension().and_then(OsStr::to_str) == Some("toml")
-                })
-                .collect::<Vec<_>>();
-            paths.sort();
+            let mut entries: Vec<_> = std::fs::read_dir(&theme_dir)
+                .map_err(|e| Error::theme_read(&theme_dir, e))?
+                .collect::<std::io::Result<_>>()
+                .map_err(|e| Error::theme_read(&theme_dir, e))?;
 
-            for path in paths {
-                let key = derive_theme_name_from_path(&path)?;
-                let file_theme = read_toml::<ThemeContent>(&path)?;
-                themes.insert(
-                    key,
-                    NamedTheme {
-                        kind: file_theme.kind,
-                        theme: file_theme.into_runtime_theme()?,
-                    },
-                );
+            entries.sort_by_key(|e| e.path());
+
+            for entry in entries {
+                let path = entry.path();
+                if path.is_file() && path.extension().and_then(OsStr::to_str) == Some("toml") {
+                    let key = derive_theme_name_from_path(&path)?;
+                    let file_theme = read_toml::<ThemeContent>(&path)?;
+                    themes.insert(
+                        key,
+                        NamedTheme {
+                            kind: file_theme.kind,
+                            theme: file_theme.into_runtime_theme()?,
+                        },
+                    );
+                }
             }
         }
 
@@ -164,44 +162,40 @@ impl ThemeContent {
 
 fn parse_model_series(values: &[String]) -> Result<[Color; 12]> {
     if values.len() != 12 {
-        bail!(
-            "series.model must contain exactly 12 colors, got {}",
-            values.len()
-        );
+        return Err(Error::ModelColorNum(values.len()));
     }
 
-    let mut parsed = Vec::with_capacity(values.len());
-    for value in values {
-        parsed.push(parse_hex_color(value)?);
-    }
+    let parsed: Vec<Color> = values.iter().map(|v| parse_hex_color(v)).collect::<Result<_>>()?;
 
     parsed
         .try_into()
-        .map_err(|_| anyhow!("failed to parse series.model colors"))
+        .map_err(|_| Error::ModelColorParse)
 }
 
 fn parse_hex_color(value: &str) -> Result<Color> {
     let raw = value.trim();
     let hex = raw
         .strip_prefix('#')
-        .ok_or_else(|| anyhow!("invalid color '{raw}', expected #RRGGBB"))?;
+        .ok_or_else(|| Error::invalid_color(raw))?;
 
     if hex.len() != 6 {
-        bail!("invalid color '{raw}', expected #RRGGBB");
+        return Err(Error::invalid_color(raw));
     }
 
-    let parse = |range: std::ops::Range<usize>| -> Result<u8> {
-        u8::from_str_radix(&hex[range], 16)
-            .map_err(|_| anyhow!("invalid color '{raw}', expected #RRGGBB"))
-    };
+    let r = u8::from_str_radix(&hex[0..2], 16)
+        .map_err(|_| Error::invalid_color(raw))?;
+    let g = u8::from_str_radix(&hex[2..4], 16)
+        .map_err(|_| Error::invalid_color(raw))?;
+    let b = u8::from_str_radix(&hex[4..6], 16)
+        .map_err(|_| Error::invalid_color(raw))?;
 
-    Ok(Color::Rgb(parse(0..2)?, parse(2..4)?, parse(4..6)?))
+    Ok(Color::Rgb(r, g, b))
 }
 
 fn normalize_theme_name(name: &str) -> Result<String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        bail!("theme name cannot be empty");
+        return Err(Error::EmptyThemeName);
     }
     Ok(trimmed.to_ascii_lowercase())
 }
@@ -210,7 +204,7 @@ fn derive_theme_name_from_path(path: &Path) -> Result<String> {
     let stem = path
         .file_stem()
         .and_then(OsStr::to_str)
-        .ok_or_else(|| anyhow!("invalid theme filename {}", path.display()))?;
+        .ok_or_else(|| Error::invalid_theme_filename(path))?;
     normalize_theme_name(stem)
 }
 
@@ -218,9 +212,8 @@ fn read_toml<T>(path: &Path) -> Result<T>
 where
     T: for<'de> Deserialize<'de>,
 {
-    let contents = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
-    toml::from_str(&contents).with_context(|| format!("failed to parse {}", path.display()))
+    let contents = std::fs::read_to_string(path).map_err(|e| Error::theme_read(path, e))?;
+    toml::from_str(&contents).map_err(|e| Error::theme_parse(path, e))
 }
 
 #[cfg(test)]
