@@ -165,11 +165,12 @@ fn parse_model_series(values: &[String]) -> Result<[Color; 12]> {
         return Err(Error::ModelColorNum(values.len()));
     }
 
-    let parsed: Vec<Color> = values.iter().map(|v| parse_hex_color(v)).collect::<Result<_>>()?;
+    let parsed: Vec<Color> = values
+        .iter()
+        .map(|v| parse_hex_color(v))
+        .collect::<Result<_>>()?;
 
-    parsed
-        .try_into()
-        .map_err(|_| Error::ModelColorParse)
+    parsed.try_into().map_err(|_| Error::ModelColorParse)
 }
 
 fn parse_hex_color(value: &str) -> Result<Color> {
@@ -182,12 +183,9 @@ fn parse_hex_color(value: &str) -> Result<Color> {
         return Err(Error::invalid_color(raw));
     }
 
-    let r = u8::from_str_radix(&hex[0..2], 16)
-        .map_err(|_| Error::invalid_color(raw))?;
-    let g = u8::from_str_radix(&hex[2..4], 16)
-        .map_err(|_| Error::invalid_color(raw))?;
-    let b = u8::from_str_radix(&hex[4..6], 16)
-        .map_err(|_| Error::invalid_color(raw))?;
+    let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| Error::invalid_color(raw))?;
+    let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| Error::invalid_color(raw))?;
+    let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| Error::invalid_color(raw))?;
 
     Ok(Color::Rgb(r, g, b))
 }

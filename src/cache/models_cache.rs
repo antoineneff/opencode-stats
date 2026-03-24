@@ -163,7 +163,9 @@ pub async fn refresh_remote_models(
     cache_path: PathBuf,
     sender: mpsc::UnboundedSender<anyhow::Result<PricingCatalog>>,
 ) {
-    let fetch_result = refresh_pricing_catalog(cache_path).await.map_err(Into::into);
+    let fetch_result = refresh_pricing_catalog(cache_path)
+        .await
+        .map_err(Into::into);
     let _ = sender.send(fetch_result);
 }
 
@@ -217,8 +219,10 @@ fn cache_is_stale(path: &Path) -> Result<bool> {
     if !path.exists() {
         return Ok(true);
     }
-    let metadata = fs::metadata(path)
-        .map_err(|e| Error::CacheRead { path: path.to_path_buf(), source: e })?;
+    let metadata = fs::metadata(path).map_err(|e| Error::CacheRead {
+        path: path.to_path_buf(),
+        source: e,
+    })?;
     let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
     let age = SystemTime::now()
         .duration_since(modified)
