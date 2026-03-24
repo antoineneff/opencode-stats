@@ -1,4 +1,4 @@
-# AGENT.md
+# AGENTS.md
 
 Context for AI assistants working on oc-stats.
 
@@ -6,82 +6,67 @@ Context for AI assistants working on oc-stats.
 
 oc-stats is a terminal dashboard for tracking OpenCode usage statistics. It reads usage data from the OpenCode SQLite database (or JSON export) and displays token usage, costs, model breakdown, and activity heatmap in a ratatui-based TUI.
 
+**Rust edition: 2024**
+
 ## Build & Test Commands
 
 ```bash
-cargo build          # Build the project
-cargo build --release  # Release build
-cargo test           # Run tests
-cargo clippy         # Lint checks
-cargo fmt            # Format code
-cargo run            # Run the app
+cargo build              # Build the project
+cargo test               # Run all tests
+cargo test <test_name>   # Run a single test (e.g., cargo test normalizes_date_suffixes)
+cargo clippy             # Lint checks
+cargo clippy --fix       # Auto-fix lint warnings
+cargo fmt                # Format code
+cargo run -- --db /path/to/opencode.db   # Run with custom database
+cargo run -- --json /path/to/export.json # Run with JSON export
 ```
 
-## Project Structure
+## Code Style
 
-```plaintext
-src/
-├── main.rs              # Entry point, CLI args
-├── config/
-│   ├── mod.rs
-│   ├── app_config.rs    # ~/.config/oc-stats/config.toml loader
-│   └── theme_config.rs  # Theme catalog from themes.toml and themes/*.toml
-├── db/
-│   ├── mod.rs
-│   ├── connection.rs    # SQLite connection handling
-│   ├── models.rs        # Data models (UsageEvent, TokenUsage, etc.)
-│   └── queries.rs       # Database queries
-├── cache/
-│   ├── mod.rs
-│   ├── http_client.rs   # HTTP client for remote pricing
-│   ├── models_cache.rs  # Model pricing catalog, remote refresh
-│   └── opencode_config.rs  # OpenCode config parsing
-├── analytics/
-│   ├── mod.rs           # Analytics snapshot builder
-│   ├── daily.rs         # Daily aggregation
-│   ├── weekly.rs        # Weekly aggregation
-│   ├── monthly.rs       # Monthly aggregation
-│   ├── model_stats.rs   # Model/provider statistics
-│   └── heatmap_data.rs  # 365-day heatmap data
-├── ui/
-│   ├── mod.rs
-│   ├── app.rs           # Main app state and event loop
-│   ├── overview.rs      # Overview page rendering
-│   ├── models.rs        # Models/Providers pages
-│   ├── export.rs        # Share card generation
-│   ├── theme.rs         # Dark/light themes
-│   └── widgets/
-│       ├── heatmap.rs   # Activity heatmap widget
-│       ├── linechart.rs # Line chart widget
-│       └── common.rs    # Shared UI utilities
-└── utils/
-    ├── mod.rs
-    ├── formatting.rs    # Number/date formatting
-    ├── pricing.rs       # Price calculation helpers
-    └── time.rs          # Time range handling
-```
+### Imports
 
-## Key Data Models
+Group imports in this order, separated by blank lines:
+1. `std::` imports first
+2. External crate imports
+3. `crate::` imports last
 
-- `UsageEvent`: A single AI interaction with tokens, model, timestamps
-- `TokenUsage`: input, output, cache_read, cache_write counts
-- `AppData`: All loaded data (events, messages, sessions)
-- `PricingCatalog`: Model pricing with local cache and remote refresh
-- `AnalyticsSnapshot`: Computed statistics for display
+### Formatting
 
-## Data Flow
+- No comments unless explicitly requested
+- Use `cargo fmt` before committing
+- Use `#[allow(dead_code)]` for intentionally unused code
 
-1. `db/queries.rs::load_app_data()` loads from SQLite or JSON
-2. `cache/models_cache.rs::PricingCatalog::load()` loads pricing (cached or remote)
-3. `analytics/mod.rs::build_snapshot()` computes statistics
-4. `ui/app.rs::App` runs the TUI event loop
+### Naming Conventions
+
+- Types/structs/enums: `PascalCase`
+- Functions/methods: `snake_case`
+- Constants: `SCREAMING_SNAKE_CASE`
+- Test functions: descriptive snake_case (e.g., `normalizes_date_suffixes`)
+
+### Error Handling
+
+Each domain module has its own `errors.rs`:
+- Define error types with `thiserror::Error`
+- Provide a `Result<T>` type alias for the module
+- Use constructor methods for common errors
+- Use `anyhow::Result` with `.context()` in `main.rs` for user-facing errors
+
+### Testing
+
+- Place tests in a `#[cfg(test)] mod tests` block at the end of the file
+- Import `super::*` for convenience in test modules
+
+### Types
+
+- Use `u64` for token counts (use `saturating_add` to avoid overflow)
+- Use `Decimal` from `rust_decimal` for monetary values
+- Use `DateTime<Local>` for timestamps displayed to users
 
 ## Key Rules
 
 ### Data Loading
 
 - Default database: `%APPDATA%/opencode/opencode.db` (Windows), `~/.local/share/opencode/opencode.db` (Linux), `~/Library/Application Support/opencode/opencode.db` (macOS)
-- Fallback to JSON export with `--json` flag
 - Only assistant messages count toward usage
 
 ### Pricing
@@ -95,31 +80,6 @@ src/
 
 ### Theme Configuration
 
-- App config file: `~/.config/oc-stats/config.toml`
+- App config: `~/.config/oc-stats/config.toml`
 - Theme index: `~/.config/oc-stats/themes.toml`
-- Theme overrides dir: `~/.config/oc-stats/themes/*.toml`
-- `themes/*.toml` overrides same-name entries from `themes.toml`
-- If no config/theme files exist, built-in dark/light themes are used
-
-### UI
-
-- Inline viewport (not alt screen), fixed height ~23 lines
-- Pages: Overview, Models, Providers
-- Time ranges: All, 30d, 7d (cycles with `r` key)
-- Heatmap always shows 365 days
-
-## Keybindings
-
-- `Left/Right/Tab`: Switch pages
-- `r`: Cycle time range
-- `1/2/3`: Direct range selection
-- `Ctrl+S`: Copy summary to clipboard
-- `t`: Toggle theme
-- `q/Esc`: Quit
-
-## Code Style
-
-- No comments unless requested
-- Keep modules separated by concern
-- Pure analytics functions where possible
-- Handle missing data gracefully (use `Option`, defaults)
+- Theme overrides: `~/.config/oc-stats/themes/*.toml`
