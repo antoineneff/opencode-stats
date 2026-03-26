@@ -15,7 +15,7 @@ use crate::config::app_config::AppConfig;
 use crate::config::theme_config::ThemeCatalog;
 use crate::db::models::InputOptions;
 use crate::db::queries::load_app_data;
-use crate::ui::app::App;
+use crate::ui::app::{App, print_exit_art};
 use crate::ui::theme::{Theme, ThemeKind, ThemeMode};
 
 #[tokio::main]
@@ -32,9 +32,11 @@ async fn main() -> Result<()> {
     .context("failed to load OpenCode usage data")?;
 
     let pricing = PricingCatalog::load().context("failed to load pricing catalog")?;
-    let theme = resolve_theme(cli.theme).context("failed to resolve theme")?;
+    let (theme_kind, theme) = resolve_theme(cli.theme).context("failed to resolve theme")?;
     let app = App::new(data, pricing, theme);
-    app.run().await
+    app.run().await?;
+    print_exit_art(theme_kind);
+    Ok(())
 }
 
 #[derive(Debug, Parser)]
@@ -125,7 +127,7 @@ fn finalize_cache_update(
     }
 }
 
-fn resolve_theme(cli_theme: Option<ThemeMode>) -> Result<Theme> {
+fn resolve_theme(cli_theme: Option<ThemeMode>) -> Result<(ThemeKind, Theme)> {
     let app_config = AppConfig::load().context("failed to load config.toml")?;
     let catalog = ThemeCatalog::load().context("failed to load theme catalog")?;
 
@@ -151,7 +153,7 @@ fn resolve_theme(cli_theme: Option<ThemeMode>) -> Result<Theme> {
         );
     }
 
-    Ok(selected.theme.clone())
+    Ok((kind, selected.theme.clone()))
 }
 
 #[cfg(test)]
