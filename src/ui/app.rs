@@ -468,7 +468,7 @@ pub fn print_exit_art(theme_kind: ThemeKind) {
 
     for (idx, (o, c, s, t, a)) in itertools::izip!(O, C, S, T, A).enumerate() {
         eprintln!(
-            "  {o} {c}   {s}{t}{a}{t}{s}",
+            "  {o} {c}  {s}{t}{a}{t}{s}",
             o = set_theme(o, idx, theme_kind),
             c = set_theme(c, idx, theme_kind),
         );
