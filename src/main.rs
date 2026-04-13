@@ -17,6 +17,7 @@ use crate::db::models::InputOptions;
 use crate::db::queries::load_app_data;
 use crate::ui::app::{App, print_exit_art};
 use crate::ui::theme::{Theme, ThemeKind, ThemeMode};
+use crate::utils::pricing::ZeroCostBehavior;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,7 +34,12 @@ async fn main() -> Result<()> {
 
     let pricing = PricingCatalog::load().context("failed to load pricing catalog")?;
     let (theme_kind, theme) = resolve_theme(cli.theme).context("failed to resolve theme")?;
-    let app = App::new(data, pricing, theme);
+    let zero_cost_behavior = if cli.ignore_zero {
+        ZeroCostBehavior::EstimateWhenZero
+    } else {
+        ZeroCostBehavior::KeepZero
+    };
+    let app = App::new(data, pricing, theme, zero_cost_behavior);
     app.run().await?;
     print_exit_art(theme_kind);
     Ok(())
@@ -54,6 +60,12 @@ struct CliArgs {
 
     #[arg(long = "theme")]
     theme: Option<ThemeMode>,
+
+    #[arg(
+        long = "ignore-zero",
+        help = "Treat zero stored costs as missing and estimate them"
+    )]
+    ignore_zero: bool,
 }
 
 #[derive(Debug, Subcommand)]
