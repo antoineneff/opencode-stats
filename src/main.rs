@@ -8,7 +8,8 @@ mod utils;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 use crate::cache::models_cache::{PricingCatalog, default_cache_path, refresh_pricing_catalog};
 use crate::config::app_config::AppConfig;
@@ -23,7 +24,7 @@ use crate::utils::pricing::ZeroCostBehavior;
 async fn main() -> Result<()> {
     let cli = CliArgs::parse();
     if let Some(command) = cli.command {
-        return run_cache_command(command).await;
+        return run_command(command).await;
     }
 
     let data = load_app_data(&InputOptions {
@@ -52,13 +53,21 @@ struct CliArgs {
     #[command(subcommand)]
     command: Option<Command>,
 
-    #[arg(long = "db", value_name = "PATH")]
+    #[arg(
+        long = "db",
+        value_name = "PATH",
+        help = "Path to OpenCode SQLite database file"
+    )]
     database_path: Option<PathBuf>,
 
-    #[arg(long = "json", value_name = "PATH")]
+    #[arg(
+        long = "json",
+        value_name = "PATH",
+        help = "Path to OpenCode usage JSON file"
+    )]
     json_path: Option<PathBuf>,
 
-    #[arg(long = "theme")]
+    #[arg(long = "theme", help = "Theme to use for the application")]
     theme: Option<ThemeMode>,
 
     #[arg(
@@ -74,6 +83,11 @@ enum Command {
         #[command(subcommand)]
         action: CacheCommand,
     },
+    #[command(about = "Generate shell completions for oc-stats")]
+    Completions {
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -87,7 +101,7 @@ enum CacheCommand {
     Clean,
 }
 
-async fn run_cache_command(command: Command) -> Result<()> {
+async fn run_command(command: Command) -> Result<()> {
     match command {
         Command::Cache { action } => match action {
             CacheCommand::Path => {
@@ -117,6 +131,12 @@ async fn run_cache_command(command: Command) -> Result<()> {
                 Ok(())
             }
         },
+        Command::Completions { shell } => {
+            let mut cmd = CliArgs::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+            Ok(())
+        }
     }
 }
 
