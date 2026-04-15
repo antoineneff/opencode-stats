@@ -14,6 +14,8 @@ pub fn format_tokens(value: u64) -> String {
 pub fn format_usd_precise(value: Decimal) -> String {
     if value >= Decimal::ONE {
         format!("${:.2}", value.round_dp(2))
+    } else if value == Decimal::ZERO {
+        "$0.00".to_string()
     } else {
         format!("${:.4}", value.round_dp(4))
     }
