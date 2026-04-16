@@ -7,9 +7,9 @@ mod utils;
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
+use color_eyre::eyre::{Context, ContextCompat, Result, bail};
 
 use crate::cache::models_cache::{PricingCatalog, default_cache_path, refresh_pricing_catalog};
 use crate::config::app_config::AppConfig;
@@ -22,6 +22,8 @@ use crate::utils::pricing::ZeroCostBehavior;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    color_eyre::install()?;
+
     let cli = CliArgs::parse();
     if let Some(command) = cli.command {
         return run_command(command).await;
@@ -31,10 +33,10 @@ async fn main() -> Result<()> {
         database_path: cli.database_path,
         json_path: cli.json_path,
     })
-    .context("failed to load OpenCode usage data")?;
+    .wrap_err("failed to load OpenCode usage data")?;
 
-    let pricing = PricingCatalog::load().context("failed to load pricing catalog")?;
-    let (theme_kind, theme) = resolve_theme(cli.theme).context("failed to resolve theme")?;
+    let pricing = PricingCatalog::load().wrap_err("failed to load pricing catalog")?;
+    let (theme_kind, theme) = resolve_theme(cli.theme).wrap_err("failed to resolve theme")?;
     let zero_cost_behavior = if cli.ignore_zero {
         ZeroCostBehavior::EstimateWhenZero
     } else {
@@ -116,7 +118,7 @@ async fn run_command(command: Command) -> Result<()> {
                     current.as_ref(),
                     refresh_pricing_catalog(path.clone())
                         .await
-                        .map_err(anyhow::Error::from),
+                        .map_err(color_eyre::eyre::Error::from),
                 )?;
                 println!("{message}");
                 Ok(())
@@ -125,7 +127,7 @@ async fn run_command(command: Command) -> Result<()> {
                 let path = default_cache_path()?;
                 if path.exists() {
                     std::fs::remove_file(&path)
-                        .with_context(|| format!("failed to remove {}", path.display()))?;
+                        .wrap_err_with(|| format!("failed to remove {}", path.display()))?;
                 }
                 println!("Cleaned {}", path.display());
                 Ok(())
@@ -151,7 +153,7 @@ fn finalize_cache_update(
             let fallback_hint = current
                 .map(PricingCatalog::refresh_failure_hint)
                 .unwrap_or("current pricing fallback status is unknown");
-            Err(err.context(format!(
+            Err(err.wrap_err(format!(
                 "failed to update {}; {fallback_hint}",
                 path.display()
             )))
@@ -160,8 +162,8 @@ fn finalize_cache_update(
 }
 
 fn resolve_theme(cli_theme: Option<ThemeMode>) -> Result<(ThemeKind, Theme)> {
-    let app_config = AppConfig::load().context("failed to load config.toml")?;
-    let catalog = ThemeCatalog::load().context("failed to load theme catalog")?;
+    let app_config = AppConfig::load().wrap_err("failed to load config.toml")?;
+    let catalog = ThemeCatalog::load().wrap_err("failed to load theme catalog")?;
 
     let mode = cli_theme.unwrap_or(app_config.theme.default);
     let kind = mode.resolve();
@@ -170,7 +172,7 @@ fn resolve_theme(cli_theme: Option<ThemeMode>) -> Result<(ThemeKind, Theme)> {
         ThemeKind::Light => app_config.theme.light.as_str(),
     };
 
-    let selected = catalog.get(selected_name).with_context(|| {
+    let selected = catalog.get(selected_name).wrap_err_with(|| {
         format!(
             "theme '{selected_name}' not found; available themes: {}",
             catalog.names().join(", ")
@@ -178,7 +180,7 @@ fn resolve_theme(cli_theme: Option<ThemeMode>) -> Result<(ThemeKind, Theme)> {
     })?;
 
     if selected.kind != kind {
-        anyhow::bail!(
+        bail!(
             "theme '{selected_name}' has type {:?}, expected {:?}",
             selected.kind,
             kind
@@ -190,9 +192,10 @@ fn resolve_theme(cli_theme: Option<ThemeMode>) -> Result<(ThemeKind, Theme)> {
 
 #[cfg(test)]
 mod tests {
+    use color_eyre::eyre::{Result, eyre};
+
     use super::finalize_cache_update;
     use crate::cache::models_cache::{PricingAvailability, PricingCatalog};
-    use anyhow::{Result, anyhow};
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
 
@@ -225,7 +228,7 @@ mod tests {
         let err = finalize_cache_update(
             path,
             Some(&test_catalog(PricingAvailability::OverridesOnly)),
-            Err(anyhow!("network down")),
+            Err(eyre!("network down")),
         )
         .unwrap_err();
 
@@ -237,7 +240,7 @@ mod tests {
     #[test]
     fn cache_update_failure_without_catalog_still_returns_error() {
         let path = Path::new("/tmp/models.json");
-        let result: Result<PricingCatalog> = Err(anyhow!("network down"));
+        let result: Result<PricingCatalog> = Err(eyre!("network down"));
         let err = finalize_cache_update(path, None, result).unwrap_err();
 
         assert!(format!("{err:#}").contains("current pricing fallback status is unknown"));

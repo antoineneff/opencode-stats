@@ -1,11 +1,13 @@
 use std::borrow::Cow;
+use std::io::stdout;
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use color_eyre::eyre::Result;
 use colored::{ColoredString, Colorize};
 use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use ratatui::layout::{Constraint, Layout};
+use ratatui::prelude::CrosstermBackend;
 use ratatui::widgets::{Block, Padding};
 use ratatui::{DefaultTerminal, Frame, Terminal, TerminalOptions, Viewport, backend::TestBackend};
 use tokio::sync::mpsc;
@@ -136,13 +138,28 @@ impl App {
     }
 
     pub async fn run(mut self) -> Result<()> {
-        let mut terminal = ratatui::init_with_options(TerminalOptions {
+        let mut terminal = Self::init_with_options(TerminalOptions {
             viewport: Viewport::Inline(VIEWPORT_HEIGHT),
-        });
-
+        })?;
         let app_result = self.run_loop(&mut terminal).await;
         Self::restore(&mut terminal)?;
         app_result
+    }
+
+    /// 为什么 ratatui::restore 的 panic hook 默认行为有个 LeaveAlternateScreen ……
+    fn init_with_options(options: TerminalOptions) -> Result<DefaultTerminal> {
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            eprintln!("\r\n");
+            if let Err(err) = crossterm::terminal::disable_raw_mode() {
+                eprintln!("Failed to disable raw mode: {err}");
+            }
+            hook(info);
+        }));
+        crossterm::terminal::enable_raw_mode()?;
+        let backend = CrosstermBackend::new(stdout());
+        let terminal = Terminal::with_options(backend, options)?;
+        Ok(terminal)
     }
 
     /// 默认的 ratatui::restore 在 Inline Viewport 下有错误的行为，
@@ -523,7 +540,7 @@ pub fn print_exit_art(theme_kind: ThemeKind) {
                 eprint_last_line(t, theme_kind);
                 eprint!(" ");
                 eprint_last_line(s, theme_kind);
-                eprintln!("");
+                eprintln!();
             }
             _ => unreachable!(),
         }

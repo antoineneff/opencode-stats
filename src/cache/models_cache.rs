@@ -146,7 +146,7 @@ pub fn default_cache_path() -> Result<PathBuf> {
 
 pub async fn refresh_remote_models(
     cache_path: PathBuf,
-    sender: mpsc::UnboundedSender<anyhow::Result<PricingCatalog>>,
+    sender: mpsc::UnboundedSender<color_eyre::eyre::Result<PricingCatalog>>,
 ) {
     let fetch_result = refresh_pricing_catalog(cache_path)
         .await

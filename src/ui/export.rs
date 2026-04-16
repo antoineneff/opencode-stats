@@ -1,5 +1,5 @@
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
-use anyhow::{Context, Result};
+use color_eyre::eyre::{Context, Result};
 use image::imageops::{blur, overlay};
 use image::{Rgba, RgbaImage};
 use imageproc::drawing::{draw_filled_circle_mut, draw_filled_rect_mut, draw_text_mut};
@@ -118,9 +118,9 @@ impl Fonts {
     fn load() -> Result<Self> {
         Ok(Self {
             regular: FontArc::try_from_slice(FONT_REGULAR)
-                .context("failed to load regular export font")?,
+                .wrap_err("failed to load regular export font")?,
             italic: FontArc::try_from_slice(FONT_ITALIC)
-                .context("failed to load italic export font")?,
+                .wrap_err("failed to load italic export font")?,
         })
     }
 }
