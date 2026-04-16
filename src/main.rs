@@ -111,6 +111,7 @@ async fn run_command(command: Command) -> Result<()> {
                 Ok(())
             }
             CacheCommand::Update => {
+                println!("Updating pricing cache...");
                 let path = default_cache_path()?;
                 let current = PricingCatalog::load().ok();
                 let message = finalize_cache_update(
