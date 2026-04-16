@@ -157,7 +157,7 @@ Once the program is running, you can quickly navigate pages and time ranges usin
 - `r` — Cycle through time ranges
 - `1` / `2` / `3` — Quickly switch time ranges
 - `Ctrl+S` — Copy current view to clipboard
-- `q` / `Esc` — Exit the program
+- `q` / `Esc` / `Ctrl+C` — Exit the program
 
 Pages:
 
