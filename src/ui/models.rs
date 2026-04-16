@@ -69,7 +69,7 @@ fn focus_header_line(
             format!("  ● {}", truncate_label(&row.model_id, 26)),
             Style::default().fg(theme.series_color(focused_model_index)),
         ),
-        Span::styled(format!("  ({:.1}%)", row.percentage), theme.muted_style()),
+        Span::styled(format!("  ({:.2}%)", row.percentage), theme.muted_style()),
         Span::styled("  |  ", theme.muted_style()),
         Span::styled(
             format!("{}/{}", focused_model_index.min(total - 1) + 1, total),
@@ -166,7 +166,7 @@ fn render_model_detail(
     frame.render_widget(
         Paragraph::new(metric_line(
             "Rate ",
-            format!("{:.1} tok/s", row.p50_output_tokens_per_second),
+            format!("{:.2} tok/s", row.p50_output_tokens_per_second),
             theme,
         )),
         third_right,
@@ -231,7 +231,7 @@ fn focus_provider_line(
             format!("  ● {}", truncate_label(&row.provider_id, 26)),
             Style::default().fg(theme.series_color(focused_provider_index)),
         ),
-        Span::styled(format!("  ({:.1}%)", row.percentage), theme.muted_style()),
+        Span::styled(format!("  ({:.2}%)", row.percentage), theme.muted_style()),
         Span::styled("  |  ", theme.muted_style()),
         Span::styled(
             format!("{}/{}", focused_provider_index.min(total - 1) + 1, total),
@@ -328,7 +328,7 @@ fn render_provider_detail(
     frame.render_widget(
         Paragraph::new(metric_line(
             "Rate ",
-            format!("{:.1} tok/s", row.p50_output_tokens_per_second),
+            format!("{:.2} tok/s", row.p50_output_tokens_per_second),
             theme,
         )),
         third_right,

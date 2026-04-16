@@ -428,7 +428,7 @@ impl App {
                 .take(8)
                 .map(|row| {
                     format!(
-                        "{}: {} tokens ({:.1}%)",
+                        "{}: {} tokens ({:.2}%)",
                         row.model_id, row.total_tokens, row.percentage
                     )
                 })
@@ -441,7 +441,7 @@ impl App {
                 .take(8)
                 .map(|row| {
                     format!(
-                        "{}: {} tokens ({:.1}%)",
+                        "{}: {} tokens ({:.2}%)",
                         row.provider_id, row.total_tokens, row.percentage
                     )
                 })

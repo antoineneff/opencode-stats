@@ -5,9 +5,9 @@ use crate::utils::pricing::PriceSummary;
 pub fn format_tokens(value: u64) -> String {
     match value {
         0..=999 => value.to_string(),
-        1_000..=999_999 => format!("{:.1}K", value as f64 / 1_000.0),
-        1_000_000..=999_999_999 => format!("{:.1}M", value as f64 / 1_000_000.0),
-        _ => format!("{:.1}B", value as f64 / 1_000_000_000.0),
+        1_000..=999_999 => format!("{:.2}K", value as f64 / 1_000.0),
+        1_000_000..=999_999_999 => format!("{:.2}M", value as f64 / 1_000_000.0),
+        _ => format!("{:.2}B", value as f64 / 1_000_000_000.0),
     }
 }
 
