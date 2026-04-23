@@ -126,7 +126,9 @@ pub fn build_snapshot(
             prompts,
             models_used,
             active_days,
-            fun_comparison: crate::utils::formatting::tokens_comparison_text(total_tokens),
+            fun_comparison: crate::utils::formatting::tokens_comparison_text(
+                input_tokens + output_tokens,
+            ),
         },
         models,
         chart,

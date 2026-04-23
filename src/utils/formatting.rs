@@ -39,24 +39,21 @@ pub fn format_price_summary(value: &PriceSummary) -> String {
 }
 
 pub fn tokens_comparison_text(total_tokens: u64) -> String {
-    if total_tokens == 0 {
-        return "No activity yet. Once OpenCode starts spending tokens, this area turns into the fun part.".to_string();
-    }
-
-    let pages = total_tokens as f64 / 750.0;
-    let novels = pages / 300.0;
-    let hours_of_reading = pages / 40.0;
-
-    if novels >= 1.0 {
-        format!(
+    const PAGE_TOKENS: f64 = 750.0; // 750 tokens per printed page
+    const NOVAL_TOKENS: f64 = PAGE_TOKENS * 300.0; // 300 pages per novel
+    const READING_SPEED: f64 = PAGE_TOKENS * 40.0; // pages per hour
+    match total_tokens {
+        0 => "No activity yet. Try using OpenCode!".to_string(),
+        ..100_000 => format!(
+            "About {:.1} printed pages of text, or {:.1} hours of reading.",
+            total_tokens as f64 / PAGE_TOKENS,
+            total_tokens as f64 / READING_SPEED
+        ),
+        100_000.. => format!(
             "Roughly {:.1} novels of text, or {:.1} hours of nonstop reading.",
-            novels, hours_of_reading
-        )
-    } else {
-        format!(
-            "About {:.0} printed pages of text, or {:.1} hours of reading.",
-            pages, hours_of_reading
-        )
+            total_tokens as f64 / NOVAL_TOKENS,
+            total_tokens as f64 / READING_SPEED
+        ),
     }
 }
 
