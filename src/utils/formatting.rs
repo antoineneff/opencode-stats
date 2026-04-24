@@ -39,65 +39,72 @@ pub fn format_price_summary(value: &PriceSummary) -> String {
 }
 
 pub fn tokens_comparison_text(total_tokens: u64) -> String {
+    if total_tokens == 0 {
+        return "No activity yet. Start a conversation!".to_string();
+    }
+
     let tokens = total_tokens as f64;
 
-    // Base reading speed: ~225 words/min -> ~300 tokens/min
+    // -- Time Constants (Thresholds for 1.0) --
     const MIN_READING: f64 = 300.0;
     const HOUR_READING: f64 = MIN_READING * 60.0; // 18,000 tokens
     const DAY_COZY_READING: f64 = HOUR_READING * 4.0; // 72,000 tokens (4 hours/day)
+    const YEAR_JOURNALING: f64 = 200_000.0; // 每年写日记
+    const YEAR_SPEAKING: f64 = 6_300_000.0; // 每年日常说话
+    const LIFETIME_SPEAKING: f64 = YEAR_SPEAKING * 80.0; // 504,000,000 tokens (80 years)
+    const MILLENNIUM_SPEAKING: f64 = YEAR_SPEAKING * 1000.0; // 6,300,000,000 tokens
+    const EPOCH_CIVILIZATION: f64 = YEAR_SPEAKING * 100_000.0; // 630,000,000,000 tokens
 
-    // Writing/Speaking milestones
-    const LETTER: f64 = 600.0; // ~450 words per letter
-    const NOTEBOOK: f64 = 30_000.0; // ~22,500 words per notebook
-    const NOVEL: f64 = 150_000.0; // ~112,500 words per thick novel
-    const BOOKSHELF: f64 = NOVEL * 40.0; // 6,000,000 tokens (40 novels)
-    const TOWN_LIBRARY: f64 = NOVEL * 50_000.0; // 7,500,000,000 tokens (50k books)
-    const NATIONAL_LIBRARY: f64 = NOVEL * 20_000_000.0; // 3,000,000,000,000 tokens (20M books)
+    // -- Volume Constants (Thresholds for 1.0) --
+    const LETTER: f64 = 400.0; // 信件
+    const NOTEBOOK: f64 = 25_000.0; // 笔记本
+    const NOVEL: f64 = 120_000.0; // 小说
+    const BOOKSHELF: f64 = NOVEL * 40.0; // 4,800,000 tokens (书架)
+    const LIBRARY_SECTION: f64 = BOOKSHELF * 10.0; // 48,000,000 tokens (图书馆专区)
+    const TOWN_LIBRARY: f64 = NOVEL * 20_000.0; // 2,400,000,000 tokens (小镇图书馆)
+    const NATIONAL_LIBRARY: f64 = NOVEL * 10_000_000.0; // 1,200,000,000,000 tokens (国家图书馆)
 
-    const YEAR_JOURNALING: f64 = 250_000.0; // ~500 words/day * 365
-    const YEAR_SPEAKING: f64 = 7_500_000.0; // ~16,000 words/day * 365
-    const LIFETIME_SPEAKING: f64 = YEAR_SPEAKING * 80.0; // 600,000,000 tokens (80 years)
-    const MILLENNIUM_SPEAKING: f64 = YEAR_SPEAKING * 1000.0; // 7,500,000,000 tokens
-    const EPOCH_CIVILIZATION: f64 = YEAR_SPEAKING * 100_000.0; // 750,000,000,000 tokens
+    let obj_str = if tokens >= NATIONAL_LIBRARY {
+        format!(
+            "Roughly {:.2} national libraries",
+            tokens / NATIONAL_LIBRARY
+        )
+    } else if tokens >= TOWN_LIBRARY {
+        format!("Like {:.2} town libraries", tokens / TOWN_LIBRARY)
+    } else if tokens >= LIBRARY_SECTION {
+        format!("About {:.2} library sections", tokens / LIBRARY_SECTION)
+    } else if tokens >= BOOKSHELF {
+        format!("Like {:.2} packed bookshelves", tokens / BOOKSHELF)
+    } else if tokens >= NOVEL {
+        format!("Around {:.2} thick novels", tokens / NOVEL)
+    } else if tokens >= NOTEBOOK {
+        format!("Roughly {:.2} filled notebooks", tokens / NOTEBOOK)
+    } else {
+        format!("About {:.2} handwritten letters", tokens / LETTER)
+    };
 
-    match total_tokens {
-        0 => "No activity yet. Start a conversation!".to_string(),
-        1..10_000 => format!(
-            "About {:.1} handwritten letters, or {:.0} mins of reading.",
-            tokens / LETTER,
-            tokens / MIN_READING
-        ),
-        10_000..250_000 => format!(
-            "Roughly {:.1} filled notebooks, or {:.1} hours of reading.",
-            tokens / NOTEBOOK,
-            tokens / HOUR_READING
-        ),
-        250_000..5_000_000 => format!(
-            "Around {:.1} thick novels, or {:.1} days of cozy reading.",
-            tokens / NOVEL,
-            tokens / DAY_COZY_READING
-        ),
-        5_000_000..50_000_000 => format!(
-            "Like {:.1} packed bookshelves, or {:.1} years of journaling.",
-            tokens / BOOKSHELF,
-            tokens / YEAR_JOURNALING
-        ),
-        50_000_000..5_000_000_000 => format!(
-            "About {:.1} years of daily speaking, or {:.2} lifetimes of words.",
-            tokens / YEAR_SPEAKING,
-            tokens / LIFETIME_SPEAKING
-        ),
-        5_000_000_000..500_000_000_000 => format!(
-            "Like {:.2} town libraries, or {:.1} millennia of human speech.",
-            tokens / TOWN_LIBRARY,
+    let time_str = if tokens >= EPOCH_CIVILIZATION {
+        format!("{:.2} epochs of civilization", tokens / EPOCH_CIVILIZATION)
+    } else if tokens >= MILLENNIUM_SPEAKING {
+        format!(
+            "{:.2} millennia of human speech",
             tokens / MILLENNIUM_SPEAKING
-        ),
-        _ => format!(
-            "Roughly {:.2} national libraries, or {:.2} epochs of civilization.",
-            tokens / NATIONAL_LIBRARY,
-            tokens / EPOCH_CIVILIZATION
-        ),
-    }
+        )
+    } else if tokens >= LIFETIME_SPEAKING {
+        format!("{:.2} lifetimes of words", tokens / LIFETIME_SPEAKING)
+    } else if tokens >= YEAR_SPEAKING {
+        format!("{:.2} years of daily speaking", tokens / YEAR_SPEAKING)
+    } else if tokens >= YEAR_JOURNALING {
+        format!("{:.2} years of journaling", tokens / YEAR_JOURNALING)
+    } else if tokens >= DAY_COZY_READING {
+        format!("{:.2} days of cozy reading", tokens / DAY_COZY_READING)
+    } else if tokens >= HOUR_READING {
+        format!("{:.2} hours of reading", tokens / HOUR_READING)
+    } else {
+        format!("{:.2} mins of reading", tokens / MIN_READING)
+    };
+
+    format!("{}, or {}.", obj_str, time_str)
 }
 
 pub fn percentage(part: u64, total: u64) -> f64 {
